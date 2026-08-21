@@ -1,0 +1,706 @@
+{
+  "forest_south": {
+    "name": "Southern Forest",
+    "width": 30,
+    "height": 22,
+    "spawn": [
+      14,
+      10
+    ],
+    "background": "custom_map_1_forest/forest_south_rendered.png",
+    "layout": [
+      "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+      "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+      "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+      "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+      "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+      "TT........NTTTTTTTTTTTTTTTTTTT",
+      "TT.........TTTTTTTTTTTTTTTTTTT",
+      "TT..^~~~`..TTTTTTTTTTTTTTTTTTT",
+      "TT..[HHH].........ggggggggTTTT",
+      "TT..[HHH].........ggggggggTTTT",
+      "TT..[HDH]ddddddd..ggggggggTTTT",
+      "TT............dd..ggggggggTTTT",
+      "TT............ddddddggggggTTTT",
+      "TTTTTTTTTTT...dd..dddd..TTTTTT",
+      "TTTgggggggTTT.dd....dddd.TTTTT",
+      "TTTgggggggTTT.dd.TN......TTTTT",
+      "TTTgggggggTTT.dd.TTTgggggggTTT",
+      "TTTgggggggTTT.dd.TTTgggggggTTT",
+      "TTTgggggggTTT.dd.TTTgggggggTTT",
+      "TTTgggggggTTT.dd.TTTgggggggTTT",
+      "TTTTTTTTTTTTT.dd.TTTgggggggTTT",
+      "TTTTTTTTTTTTNddddTTTTTTTTTTTTT"
+    ],
+    "encounter_tiles": [
+      "g"
+    ],
+    "encounter_rate": 15,
+    "connections": [
+      {
+        "side": "S",
+        "target": "river_area",
+        "entry_side": "N"
+      }
+    ],
+    "npcs": [
+      {
+        "x": 13,
+        "y": 11,
+        "name": "Mom",
+        "sprite": "npc_girl",
+        "dialogue": "Head south to the river!"
+      },
+      {
+        "x": 10,
+        "y": 10,
+        "name": "Guide",
+        "sprite": "npc_oldman",
+        "dialogue": "Cross the bridge to reach the arena."
+      }
+    ],
+    "wild_creatures": [
+      {
+        "species_id": 10,
+        "min_level": 3,
+        "max_level": 6
+      },
+      {
+        "species_id": 13,
+        "min_level": 3,
+        "max_level": 6
+      },
+      {
+        "species_id": 16,
+        "min_level": 2,
+        "max_level": 5
+      }
+    ],
+    "walkable_tiles": [
+      "b",
+      "s",
+      "D",
+      "d",
+      "W",
+      "f",
+      "g",
+      "w",
+      "S",
+      ".",
+      "P"
+    ],
+    "portals": [
+      {
+        "x": 6,
+        "y": 10,
+        "dest_map": "house_interior",
+        "dest_x": 4,
+        "dest_y": 5
+      }
+    ],
+    "edge_connections": {
+      "south": "river_area"
+    },
+    "signs": [
+      {
+        "x": 10,
+        "y": 5,
+        "text": "Rumor: The rival's starter is CHARMANDER!",
+        "is_rumor": true,
+        "reveal": "starter"
+      },
+      {
+        "x": 18,
+        "y": 15,
+        "text": "Rumor: The rival always carries Potions!",
+        "is_rumor": true,
+        "reveal": "items"
+      },
+      {
+        "x": 12,
+        "y": 21,
+        "text": "South exit: River Area ahead!",
+        "is_rumor": false
+      }
+    ]
+  },
+  "river_area": {
+    "name": "River Crossing",
+    "width": 30,
+    "height": 15,
+    "background": "custom_map_1_forest/river_area_rendered.png",
+    "layout": [
+      "............Ndddd.............",
+      "..ggggggg.....dd......^~~~`...",
+      "..gggggggTT...dd......[HHH]...",
+      "..ggggggg.N..ddd......[HHH]...",
+      "..ggggggg.....dd.ddddd[HDH]...",
+      "..ggggggg.....dd..............",
+      "wwwwwwwwwwwwwwddwwwwwwwwwwwwww",
+      "wwwwwwwwwwwwwwBBwwwwwwwwwwwwww",
+      "wwwwwwwwwwwwwwBBwwwwwwwwwwwwww",
+      "wwwwwwwwwwwwwwBBwwwwwwwwwwwwww",
+      "wwwwwwwwwwwwwwddwwwwwwwwwwwwww",
+      "wwwwwwwwwwwwwwwwwwwwwwwwwwwwww",
+      "wwwwwwwwwwwwwwwwwwwwwwwwwwwwww",
+      "wwwwwwwwwwwwwwwwwwwwwwwwwwwwww",
+      "wwwwwwwwwwwwwwwwwwwwwwwwwwwwww"
+    ],
+    "surf_tiles": [
+      "w"
+    ],
+    "bridge_tiles": [
+      "B"
+    ],
+    "connections": [
+      {
+        "side": "N",
+        "target": "forest_south",
+        "entry_side": "S"
+      },
+      {
+        "side": "S",
+        "target": "area_central",
+        "entry_side": "S"
+      },
+      {
+        "side": "E",
+        "target": "area_central",
+        "entry_side": "E",
+        "requires": "surf"
+      }
+    ],
+    "npcs": [
+      {
+        "x": 23,
+        "y": 4,
+        "name": "Fisher",
+        "sprite": "npc_fisher",
+        "dialogue": "Take this Old Rod and HM SURF! Fish a water pokemon, teach it Surf, and cross the river to reach the arena!",
+        "gives": "old_rod_and_surf"
+      },
+      {
+        "x": 20,
+        "y": 4,
+        "name": "Hiker",
+        "sprite": "npc_hiker",
+        "dialogue": "Tip: Use the Old Rod to catch water pokemon. SURF lets you cross rivers!"
+      }
+    ],
+    "items_on_talk": [
+      {
+        "npc": "Fisher",
+        "item": "old_rod"
+      }
+    ],
+    "walkable_tiles": [
+      "b",
+      "D",
+      "d",
+      "W",
+      "f",
+      "g",
+      "S",
+      ".",
+      "P",
+      "B"
+    ],
+    "portals": [
+      {
+        "x": 0,
+        "y": 5,
+        "dest_map": "forest_north",
+        "dest_x": 29,
+        "dest_y": 8
+      },
+      {
+        "x": 24,
+        "y": 4,
+        "dest_map": "house_interior",
+        "dest_x": 4,
+        "dest_y": 5
+      },
+      {
+        "x": 14,
+        "y": 14,
+        "dest_map": "area_central",
+        "dest_x": 10,
+        "dest_y": 12
+      },
+      {
+        "x": 15,
+        "y": 14,
+        "dest_map": "area_central",
+        "dest_x": 10,
+        "dest_y": 12
+      }
+    ],
+    "edge_connections": {
+      "north": "forest_south"
+    },
+    "signs": [
+      {
+        "x": 10,
+        "y": 3,
+        "text": "Rumor: The rival has 3 creatures in his team!",
+        "is_rumor": true,
+        "reveal": "team_size"
+      },
+      {
+        "x": 12,
+        "y": 0,
+        "text": "North: Forest lies beyond.",
+        "is_rumor": false
+      }
+    ],
+    "fishing_creatures": [
+      {
+        "species_id": 129,
+        "min_level": 5,
+        "max_level": 10
+      },
+      {
+        "species_id": 60,
+        "min_level": 7,
+        "max_level": 12
+      },
+      {
+        "species_id": 118,
+        "min_level": 8,
+        "max_level": 12
+      },
+      {
+        "species_id": 72,
+        "min_level": 8,
+        "max_level": 13
+      }
+    ]
+  },
+  "forest_north": {
+    "name": "Northern Forest",
+    "width": 30,
+    "height": 22,
+    "spawn": [
+      14,
+      10
+    ],
+    "background": "custom_map_1_forest/forest_north_rendered.png",
+    "layout": [
+      "TTTTTTTTT............TTTTTTTTT",
+      "TTTTTTTTT.N..MMM.....TTTTTTTTT",
+      "TTTTTTTTT....MGM.....TTTTTTTTT",
+      "TTTTTTTTT............TTTTTTTTT",
+      "TTTggggggg...........gggggggTT",
+      "TTTggggggg....Nd.....gggggggTT",
+      "TTTgggggggTTT.dd.TTTTgggggggTT",
+      "TTTgggNggg....dd.....gggggggTT",
+      "TTTgggddddddddddddddddddggggdd",
+      "TTTggggggg....dd.....gggggggTT",
+      "TTTggggggg....dd.....gggggggTT",
+      "TTTTTTTTTTT...dd...TTTTTTTTTTT",
+      "TTTTTTTTTTT...dd...TTTTTTTTTTT",
+      "TTTTTTTTTTT...dd...TTTTTTTTTTT",
+      "TTTgggggggTTT.dd.TTTTgggggggTT",
+      "TTTgggggggTTT.dd.TTTTgggggggTT",
+      "TTTgggggggTTT.dd.TTTTgggggggTT",
+      "TTTgggggggTTTTNd.TTTTgggggggTT",
+      "TTTgggggggTTT.dd.TTTTgggggggTT",
+      "TTTgggggggTTTTCCCTTTTgggggggTT",
+      "TTTgggggggTTT.dd.TTTTgggggggTT",
+      "TTTTTTTTTTTTNddddTTTTTTTTTTTTT"
+    ],
+    "cut_tiles": [
+      "C"
+    ],
+    "encounter_tiles": [
+      "g"
+    ],
+    "encounter_rate": 15,
+    "connections": [
+      {
+        "side": "S",
+        "target": "area_central",
+        "entry_side": "N",
+        "requires": "cut"
+      }
+    ],
+    "cave_entrance": {
+      "x": 14,
+      "y": 2,
+      "leads_to": "cave_interior"
+    },
+    "npcs": [
+      {
+        "x": 16,
+        "y": 3,
+        "name": "Hiker",
+        "sprite": "npc_hiker",
+        "dialogue": "HM CUT is deep inside that cave! Cut the trees south to reach the arena."
+      },
+      {
+        "x": 7,
+        "y": 8,
+        "name": "Lost Girl",
+        "sprite": "npc_girl",
+        "dialogue": "I lost my Pokedex near the cave... Can you find it for me?",
+        "quest": "find_pokedex"
+      },
+      {
+        "x": 22,
+        "y": 8,
+        "name": "Researcher",
+        "sprite": "npc_scientist",
+        "dialogue": "Fascinating! The creatures here are stronger than in the south forest."
+      }
+    ],
+    "signs": [
+      {
+        "x": 14,
+        "y": 5,
+        "text": "Mystery Cave ahead! You need HM CUT to proceed."
+      },
+      {
+        "x": 14,
+        "y": 17,
+        "text": "Trees block the path. You need CUT!"
+      },
+      {
+        "x": 10,
+        "y": 1,
+        "text": "MYSTERY CAVE - Brave explorers only!"
+      },
+      {
+        "x": 6,
+        "y": 7,
+        "text": "Rumor: The rival's strongest is around Lv15. Prepare well!",
+        "is_rumor": true,
+        "reveal": "location"
+      },
+      {
+        "x": 12,
+        "y": 21,
+        "text": "South exit: Forest South ahead!",
+        "is_rumor": false
+      }
+    ],
+    "wild_creatures": [
+      {
+        "species_id": 21,
+        "min_level": 4,
+        "max_level": 7
+      },
+      {
+        "species_id": 43,
+        "min_level": 5,
+        "max_level": 8
+      },
+      {
+        "species_id": 48,
+        "min_level": 4,
+        "max_level": 7
+      },
+      {
+        "species_id": 69,
+        "min_level": 5,
+        "max_level": 8
+      }
+    ],
+    "walkable_tiles": [
+      "b",
+      "s",
+      "D",
+      "d",
+      "E",
+      "W",
+      "f",
+      "g",
+      "w",
+      "S",
+      ".",
+      "P",
+      "G"
+    ],
+    "portals": [
+      {
+        "x": 9,
+        "y": 0,
+        "dest_map": "forest_south",
+        "dest_x": 9,
+        "dest_y": 20
+      },
+      {
+        "x": 10,
+        "y": 0,
+        "dest_map": "forest_south",
+        "dest_x": 10,
+        "dest_y": 20
+      },
+      {
+        "x": 11,
+        "y": 0,
+        "dest_map": "forest_south",
+        "dest_x": 11,
+        "dest_y": 20
+      },
+      {
+        "x": 12,
+        "y": 0,
+        "dest_map": "forest_south",
+        "dest_x": 12,
+        "dest_y": 20
+      },
+      {
+        "x": 13,
+        "y": 0,
+        "dest_map": "forest_south",
+        "dest_x": 13,
+        "dest_y": 20
+      },
+      {
+        "x": 14,
+        "y": 0,
+        "dest_map": "forest_south",
+        "dest_x": 14,
+        "dest_y": 20
+      },
+      {
+        "x": 29,
+        "y": 8,
+        "dest_map": "river_area",
+        "dest_x": 0,
+        "dest_y": 5
+      },
+      {
+        "x": 14,
+        "y": 2,
+        "dest_map": "cave_interior",
+        "dest_x": 7,
+        "dest_y": 8
+      },
+      {
+        "x": 13,
+        "y": 21,
+        "dest_map": "area_central",
+        "dest_x": 10,
+        "dest_y": 1
+      },
+      {
+        "x": 14,
+        "y": 21,
+        "dest_map": "area_central",
+        "dest_x": 10,
+        "dest_y": 1
+      },
+      {
+        "x": 15,
+        "y": 21,
+        "dest_map": "area_central",
+        "dest_x": 10,
+        "dest_y": 1
+      },
+      {
+        "x": 16,
+        "y": 21,
+        "dest_map": "area_central",
+        "dest_x": 10,
+        "dest_y": 1
+      }
+    ],
+    "edge_connections": {
+      "south": "area_central"
+    },
+    "cut_trees": [
+      {
+        "x": 13,
+        "y": 17
+      },
+      {
+        "x": 14,
+        "y": 17
+      },
+      {
+        "x": 15,
+        "y": 17
+      },
+      {
+        "x": 16,
+        "y": 17
+      }
+    ]
+  },
+  "area_central": {
+    "name": "Battle Island",
+    "width": 20,
+    "height": 14,
+    "layout": [
+      "wwwwwwwwddddwwwwwwww",
+      "wwww....dddd....wwww",
+      "www.....dddd.....www",
+      "www...FFddddFF...www",
+      "www...FAAAAAAF...www",
+      "www...FAAAAAAF...www",
+      "www...FAAAAAAF...www",
+      "www...FFFFdFFF...www",
+      "www..............www",
+      "www..............www",
+      "wwww............wwww",
+      "wwwwwwwwwwwwwwwwwwww",
+      "wwwwwwwwwwwwwwwwwwww",
+      "wwwwwwwwwwwwwwwwwwww"
+    ],
+    "arena_bounds": {
+      "x1": 7,
+      "y1": 4,
+      "x2": 13,
+      "y2": 6
+    },
+    "npcs": [
+      {
+        "x": 10,
+        "y": 5,
+        "name": "Rival",
+        "sprite": "npc_rival",
+        "dialogue": "Ready to battle? I won't hold back!",
+        "battle": true
+      },
+      {
+        "x": 10,
+        "y": 2,
+        "name": "Boy",
+        "sprite": "npc_boy",
+        "dialogue": "Final arena ahead! The rival awaits your challenge!"
+      }
+    ],
+    "signs": [],
+    "portals": [],
+    "encounter_rate": 0,
+    "encounters": [],
+    "walkable_tiles": [
+      ".",
+      "d",
+      "D",
+      "A"
+    ],
+    "background": "custom_map_1_forest/area_central_rendered.png",
+    "fishing_creatures": [
+      {
+        "species_id": 129,
+        "min_level": 8,
+        "max_level": 12
+      },
+      {
+        "species_id": 116,
+        "min_level": 10,
+        "max_level": 14
+      },
+      {
+        "species_id": 120,
+        "min_level": 10,
+        "max_level": 14
+      },
+      {
+        "species_id": 72,
+        "min_level": 10,
+        "max_level": 15
+      }
+    ]
+  },
+  "cave_interior": {
+    "name": "Mystery Cave",
+    "width": 14,
+    "height": 10,
+    "background": "custom_map_1_forest/cave_interior_rendered.png",
+    "layout": [
+      "TEEETTTTTTTTTT",
+      "TddddddddddddT",
+      "TddddddddTddIT",
+      "TdddTddddTdddT",
+      "TdddTddddTdddT",
+      "TdddTddddddddT",
+      "TdddTddddTdddT",
+      "TdddTTTTTTdddT",
+      "TddddddddTdddT",
+      "TTTTTTTETTTTTT"
+    ],
+    "items": [
+      {
+        "x": 12,
+        "y": 2,
+        "item": "HM01_CUT",
+        "name": "HM01 Cut"
+      }
+    ],
+    "exit": {
+      "x": 7,
+      "y": 9,
+      "target": "forest_north"
+    },
+    "portals": [
+      {
+        "x": 1,
+        "y": 0,
+        "dest_map": "forest_north",
+        "dest_x": 13,
+        "dest_y": 18
+      },
+      {
+        "x": 2,
+        "y": 0,
+        "dest_map": "forest_north",
+        "dest_x": 14,
+        "dest_y": 18
+      },
+      {
+        "x": 3,
+        "y": 0,
+        "dest_map": "forest_north",
+        "dest_x": 15,
+        "dest_y": 18
+      },
+      {
+        "x": 7,
+        "y": 9,
+        "dest_map": "forest_north",
+        "dest_x": 14,
+        "dest_y": 3
+      }
+    ],
+    "walkable_tiles": [
+      "D",
+      "i",
+      "d",
+      "E",
+      "I",
+      "W",
+      "."
+    ]
+  },
+  "house_interior": {
+    "name": "House",
+    "width": 9,
+    "height": 7,
+    "background": "custom_map_1_forest/house_interior_rendered.png",
+    "layout": [
+      "TTTTTTTTT",
+      "T.......T",
+      "T.......T",
+      "T.......T",
+      "T.......T",
+      "T.......T",
+      "T...D...T"
+    ],
+    "portals": [],
+    "walkable_tiles": [
+      "D",
+      "i",
+      "d",
+      "W",
+      "f",
+      "."
+    ],
+    "dynamic_exit": {
+      "x": 4,
+      "y": 6
+    }
+  }
+}

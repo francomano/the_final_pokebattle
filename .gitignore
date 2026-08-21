@@ -1,0 +1,32 @@
+# ROM file (user must provide their own)
+*.gba
+
+# Assets folder (generated at runtime from ROM + map tooling)
+assets/
+
+# Sprite cache (extracted from ROM at runtime)
+.sprite_cache/
+
+# Binary map data (generated from map editor)
+custom_map_1_forest/*.bin
+
+# Screenshots (development debug)
+screenshots/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Binary map data in data folder
+data/*.bin
+
+# Rendered map output (regenerated from ROM + maps.json)
+output_maps/

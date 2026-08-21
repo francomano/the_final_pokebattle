@@ -1,0 +1,47 @@
+Project: The Final PokéBattle (offline prototype)
+
+Overview:
+- This document gathers the project concept, design notes, and technical decisions for the offline prototype.
+
+High-level concept:
+- A competitive asynchronous exploration game set in a monster-catching universe. Two players (or one player vs AI) explore a map, gather creatures and items, collect clues about the opponent, and meet in the arena for a final battle.
+- Important rule: in the final battle the player may use all the tools and items they collected during the adventure.
+
+Characters & starters (design rule):
+- Each playable character has a predefined starter creature and a set of starting items.
+- Additional characters and stronger starters (and better starting items) can be unlocked in future updates or releases.
+- The same release model applies to maps: new characters and maps are delivered in subsequent updates to keep the game evolving.
+
+Technical goals for the prototype:
+- Offline first: build a self-contained offline prototype with character selection, map exploration, and the final-battle flow.
+- Runtime asset generation: all sprites are extracted from a data source at runtime — no pre-baked assets in the repo.
+- Deterministic maps: map layouts are defined in JSON with portal connections, NPC placements, and encounter zones.
+
+Architecture (current):
+- src/game.py — GameSession manages state, movement, battles, inventory
+- src/frontend.py — Pygame rendering, input handling, camera, animations
+- src/rom_reader.py — Reads creature data (stats, types, moves) from ROM
+- src/sprite_extractor.py — Extracts and caches visual assets from ROM
+- data/maps.json — All map layouts, portals, NPCs, tile types
+- data/characters.json — Playable characters and rival configuration
+
+Gameplay & game loop:
+- Player picks character and starter creature
+- Explores overworld maps (forest, cave, river, arena)
+- Wild encounters in tall grass; catch/defeat creatures
+- Find HM Cut in cave, teach to creature, clear blocking trees
+- Reach arena and challenge Rival to final battle
+- Win = game complete
+
+Prototype scope (v0.1):
+- 5 connected maps, 1 player vs AI rival, ~15 creature species, HM puzzle, NPCs with dialogue, final boss battle
+
+Notes on assets:
+- All visual assets are generated at runtime from the ROM data source
+- No pre-baked sprites or third-party assets are stored in the repository
+- The assets/ folder is gitignored and regenerated on first launch
+
+Next steps:
+- See CONTRIBUTING.md for detailed technical and game design roadmap
+
+-- End

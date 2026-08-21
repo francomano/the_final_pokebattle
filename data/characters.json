@@ -1,0 +1,38 @@
+{
+  "red": {
+    "name": "Red",
+    "sprite_prefix": "player_red",
+    "starter_options": [
+      {"species": 25, "level": 5},
+      {"species": 4, "level": 5}
+    ],
+    "starting_items": [
+      {"item": "potion", "count": 3},
+      {"item": "pokeball", "count": 5}
+    ]
+  },
+  "blue": {
+    "name": "Blue",
+    "sprite_prefix": "player_blue",
+    "starter_options": [
+      {"species": 7, "level": 5},
+      {"species": 1, "level": 5}
+    ],
+    "starting_items": [
+      {"item": "potion", "count": 2},
+      {"item": "pokeball", "count": 6}
+    ]
+  },
+  "leaf": {
+    "name": "Leaf",
+    "sprite_prefix": "player_green",
+    "starter_options": [
+      {"species": 1, "level": 5},
+      {"species": 7, "level": 5}
+    ],
+    "starting_items": [
+      {"item": "potion", "count": 4},
+      {"item": "pokeball", "count": 4}
+    ]
+  }
+}
