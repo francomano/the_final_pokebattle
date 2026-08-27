@@ -427,6 +427,56 @@ class GameSession:
             return layout[y][x]
         return 'T'  # out of bounds = impassable
 
+    @staticmethod
+    def _nearest_walkable_col(layout, row, walkable, x):
+        """Column on `row` (a walkable tile) closest to x."""
+        row_str = layout[row]
+        best, best_d = None, len(row_str) + 1
+        for c in range(len(row_str)):
+            if row_str[c] in walkable and abs(c - x) < best_d:
+                best, best_d = c, abs(c - x)
+        return best if best is not None else min(max(x, 0), len(row_str) - 1)
+
+    @staticmethod
+    def _nearest_walkable_row(layout, col, walkable, y):
+        """Row in column `col` (a walkable tile) closest to y."""
+        best, best_d = None, len(layout) + 1
+        for r in range(len(layout)):
+            if col < len(layout[r]) and layout[r][col] in walkable and abs(r - y) < best_d:
+                best, best_d = r, abs(r - y)
+        return best if best is not None else min(max(y, 0), len(layout) - 1)
+
+    def _edge_landing(self, direction, dest_layout, dest_walk):
+        """Position the player on a walkable tile in the destination map.
+
+        Only allows crossing an edge connection when the player is standing on
+        a road/path tile at that edge (so the whole forest border doesn't act as
+        a teleporter). Returns True when the player has been placed, else False.
+        """
+        src = self.map_data[self.current_map_key]["layout"]
+        px, py = self.player.x, self.player.y
+        # Only the road/path at the edge is a valid transition, not the whole
+        # forest border (grass '.'-tiles etc.).
+        if src[py][px] not in ("d",):
+            return False
+        if direction == "north":
+            dest_row = len(dest_layout) - 1
+            self.player.x = self._nearest_walkable_col(dest_layout, dest_row, dest_walk, px)
+            self.player.y = dest_row
+        elif direction == "south":
+            dest_row = 0
+            self.player.x = self._nearest_walkable_col(dest_layout, dest_row, dest_walk, px)
+            self.player.y = dest_row
+        elif direction == "east":
+            dest_col = 0
+            self.player.y = self._nearest_walkable_row(dest_layout, dest_col, dest_walk, py)
+            self.player.x = dest_col
+        elif direction == "west":
+            dest_col = len(dest_layout[0]) - 1
+            self.player.y = self._nearest_walkable_row(dest_layout, dest_col, dest_walk, py)
+            self.player.x = dest_col
+        return True
+
     def move_player(self, dx, dy):
         if self.state != "EXPLORING":
             return None
@@ -451,25 +501,15 @@ class GameSession:
             elif new_x >= len(layout[0]): direction = "east"
             dest_map_key = edges.get(direction)
             if dest_map_key and dest_map_key in self.map_data:
-                # Only transition if current tile (before move) is road
-                cur_tile = layout[self.player.y][self.player.x]
-                if cur_tile in ("d", "."):
+                dest_layout = self.map_data[dest_map_key]["layout"]
+                dest_walk = self.map_data[dest_map_key].get("walkable_tiles", [])
+                # Only transition from the road/path at the edge and land on a
+                # walkable tile in the destination (avoids warping in off the
+                # forest edge straight into trees/water).
+                if self._edge_landing(direction, dest_layout, dest_walk):
                     self.previous_map_key = self.current_map_key
                     self.previous_map_pos = (self.player.x, self.player.y)
                     self.current_map_key = dest_map_key
-                    dest_layout = self.map_data[dest_map_key]["layout"]
-                    if direction == "south":
-                        self.player.y = 0
-                        self.player.x = min(self.player.x, len(dest_layout[0]) - 1)
-                    elif direction == "north":
-                        self.player.y = len(dest_layout) - 1
-                        self.player.x = min(self.player.x, len(dest_layout[0]) - 1)
-                    elif direction == "east":
-                        self.player.x = 0
-                        self.player.y = min(self.player.y, len(dest_layout) - 1)
-                    elif direction == "west":
-                        self.player.x = len(dest_layout[0]) - 1
-                        self.player.y = min(self.player.y, len(dest_layout) - 1)
                     return {"moved": True, "portal": True, "dest_map": dest_map_key}
             return {"blocked": True}
 

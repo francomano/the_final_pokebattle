@@ -21,6 +21,8 @@ NUM_SPECIES = 412
 SPRITE_SIZE_4BPP = 2048         # 64x64 pixels at 4bpp
 SPRITE_WH = 64                  # sprite width/height in pixels
 
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 
 # ---------- LZ77 decompression ---------------------------------------------
 
@@ -262,6 +264,79 @@ class SpriteExtractor:
             return png_path
         return self.extract_creature_sprite(species_id)
 
+
+    def extract_player_sprites(self):
+        """Extract the three playable overworld sprites from the ROM.
+
+        FireRed stores each overworld character as a raw 4bpp tile sheet of 9
+        consecutive 16x32 frames (256 bytes each):
+            frame 0 = facing south/down (idle)
+            frame 1 = facing north/up   (idle)
+            frame 2 = facing west/left  (idle)
+            frame 3/4 = walking south
+            frame 5/6 = walking north
+            frame 7/8 = walking west
+        Facing east just horizontally flips the west frames. The results are
+        written as PNGs into the shared asset folder with the same names the
+        frontend's Assets loader expects, so the runtime uses the real ROM
+        animations instead of the placeholder block sprites.
+        """
+        players = {
+            # prefix : (sprite_sheet_offset, palette_offset)
+            "player_red":    (0x35BB68, 0x35B968),
+            "player_green":  (0x35D268, 0x35B968),
+            "player_blue":   (0x38A428, 0x36D868),
+        }
+        out_dir = os.path.join(BASE_DIR, "assets")
+        os.makedirs(out_dir, exist_ok=True)
+
+        for prefix, (sheet_off, pal_off) in players.items():
+            pal = self._palette_at(pal_off)
+            frames = [self._decode_ow_frame(sheet_off, i, pal) for i in range(9)]
+            # idle + walk frames per direction
+            mapping = {
+                f"{prefix}_down.png":           frames[0],
+                f"{prefix}_up.png":             frames[1],
+                f"{prefix}_left.png":           frames[2],
+                f"{prefix}_walk_down_1.png":    frames[3],
+                f"{prefix}_walk_down_2.png":    frames[4],
+                f"{prefix}_walk_up_1.png":      frames[5],
+                f"{prefix}_walk_up_2.png":      frames[6],
+                f"{prefix}_walk_left_1.png":    frames[7],
+                f"{prefix}_walk_left_2.png":    frames[8],
+            }
+            for name, pixels in mapping.items():
+                _write_png(os.path.join(out_dir, name), pixels, 16, 32)
+
+    def _palette_at(self, offset):
+        """Read a 16-color GBA RGB555 palette at a ROM file offset."""
+        colors = []
+        for i in range(16):
+            c = struct.unpack_from('<H', self.rom, offset + i * 2)[0]
+            r = (c & 0x1F) << 3
+            g = ((c >> 5) & 0x1F) << 3
+            b = ((c >> 10) & 0x1F) << 3
+            colors.append((r, g, b, 255))
+        colors[0] = (0, 0, 0, 0)  # transparent
+        return colors
+
+    def _decode_ow_frame(self, sheet_off, frame, palette):
+        """Decode one 16x32 overworld frame (tiled 2x4, 4bpp) to RGBA pixels."""
+        base = sheet_off + frame * 256  # 256 bytes per frame
+        pixels = [(0, 0, 0, 0)] * (16 * 32)
+        for ty in range(4):
+            for tx in range(2):
+                tile = base + (ty * 2 + tx) * 32  # 32 bytes per 8x8 tile
+                for py in range(8):
+                    for px in range(0, 8, 2):
+                        b = self.rom[tile + py * 4 + px // 2]
+                        idx_lo = b & 0x0F
+                        idx_hi = (b >> 4) & 0x0F
+                        x = tx * 8 + px
+                        y = ty * 8 + py
+                        pixels[y * 16 + x] = palette[idx_lo]
+                        pixels[y * 16 + x + 1] = palette[idx_hi]
+        return pixels
 
 # ---------- CLI usage -------------------------------------------------------
 

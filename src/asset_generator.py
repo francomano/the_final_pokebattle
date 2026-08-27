@@ -204,6 +204,11 @@ def generate_all(rom_path=None):
         from sprite_extractor import SpriteExtractor
         ext = SpriteExtractor(rom_path)
         ext.extract_all_creatures()
+        # Real overworld player animations (up/down/left/right) from the ROM
+        try:
+            ext.extract_player_sprites()
+        except Exception as e:
+            print(f"[asset_generator] OW player sprites skipped: {e}")
         # Copy creature sprites to assets/
         cache_dir = os.path.join(BASE_DIR, ".sprite_cache")
         if os.path.exists(cache_dir):
