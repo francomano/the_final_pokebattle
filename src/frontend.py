@@ -87,6 +87,7 @@ class Assets:
         self.extractor = extractor
         self.tiles = {}
         self.players = {}   # prefix -> {direction -> [frame0, frame1, frame2]}
+        self.surf = {}      # prefix -> {"ride": {dir->img}, "mount": {dir->img}}
         self.creatures = {}
         self._load_tiles()
         self._load_npc()
@@ -158,6 +159,38 @@ class Assets:
         # alternate between walk frame 1 and 2
         idx = 1 + (anim_tick // (WALK_FRAMES // 2)) % max(1, len(frames) - 1)
         return frames[min(idx, len(frames) - 1)]
+
+    def load_surf(self, prefix):
+        if prefix in self.surf:
+            return
+        s = {"ride": {}, "mount": {}}
+        for d, fname in [("down", f"{prefix}_surf_down.png"),
+                         ("up", f"{prefix}_surf_up.png"),
+                         ("left", f"{prefix}_surf_left.png")]:
+            img = self._img(os.path.join(ASSET_DIR, fname), (TILE_SIZE, TILE_SIZE * 2))
+            if img:
+                s["ride"][d] = img
+        if "left" in s["ride"]:
+            s["ride"]["right"] = pygame.transform.flip(s["ride"]["left"], True, False)
+        for d, fname in [("down", f"{prefix}_surf_mount_down.png"),
+                         ("up", f"{prefix}_surf_mount_up.png"),
+                         ("left", f"{prefix}_surf_mount_left.png")]:
+            img = self._img(os.path.join(ASSET_DIR, fname), (TILE_SIZE, TILE_SIZE * 2))
+            if img:
+                s["mount"][d] = img
+        if "left" in s["mount"]:
+            s["mount"]["right"] = pygame.transform.flip(s["mount"]["left"], True, False)
+        self.surf[prefix] = s
+
+    def surf_frame(self, prefix, direction, mount=False):
+        """Return the surfing sprite for a direction (riding idle or mount frame)."""
+        if prefix not in self.surf:
+            self.load_surf(prefix)
+        s = self.surf.get(prefix)
+        if not s:
+            return None
+        table = s["mount"] if mount else s["ride"]
+        return table.get(direction)
 
     def get_tile(self, ch):
         return self.tiles.get(ch, self.tiles.get("."))
@@ -338,7 +371,7 @@ def draw_npcs(surface, session, assets, camera):
         if sprite:
             surface.blit(sprite, (sx, sy - TILE_SIZE))
 
-def draw_player(surface, session, assets, camera, walker):
+def draw_player(surface, session, assets, camera, walker, surf_transition=None):
     prefix = session.characters.get(session.player.character_id, {}).get("sprite_prefix", "player")
     direction = session.player.direction
     ox, oy = walker.get_render_offset()
@@ -354,11 +387,32 @@ def draw_player(surface, session, assets, camera, walker):
         py = session.player.y * TILE_SIZE
 
     sx, sy = camera.to_screen(px, py)
-    frame = assets.player_frame(prefix, direction, walker.anim_tick)
-    if frame:
-        surface.blit(frame, (sx, sy - TILE_SIZE))  # sprite is 2 tiles tall
+
+    surfing = getattr(session.player, "surfing", False)
+
+    if surfing or surf_transition:
+        # Mount/dismount transition (or a lingering get-off anim) shows the
+        # get-on/off frame for its whole duration.
+        if surf_transition:
+            frame = assets.surf_frame(prefix, surf_transition.get("dir", direction), mount=True)
+            rise = 2 if surf_transition.get("type") == "mount" else 0
+        else:
+            frame = assets.surf_frame(prefix, direction, mount=False)
+            rise = 0
+        if not frame:
+            frame = assets.player_frame(prefix, direction, 0)
+            rise = 0
+        if frame:
+            surface.blit(frame, (sx, sy - TILE_SIZE - rise))
+            return
+        # fall through to blue box fallback
     else:
-        pygame.draw.rect(surface, C_BLUE, (sx, sy, TILE_SIZE, TILE_SIZE))
+        frame = assets.player_frame(prefix, direction, walker.anim_tick)
+        if frame:
+            surface.blit(frame, (sx, sy - TILE_SIZE))
+            return
+
+    pygame.draw.rect(surface, C_BLUE, (sx, sy, TILE_SIZE, TILE_SIZE))
 
 
 def draw_team_hud(surface, session, assets, font):
@@ -556,12 +610,11 @@ def draw_dialogue(surface, text, font, speaker=None):
         surface.blit(font.render(l, True, C_WHITE), (12, by + yo + i * 17))
 
 
-def draw_char_select(surface, font, characters, assets, cursor):
+def draw_char_select(surface, font, characters, assets, cursor, char_ids):
     surface.fill(C_BG)
     surface.blit(font.render("CHOOSE YOUR CHARACTER", True, C_HIGHLIGHT),
                 (SCREEN_W//2 - 100, 15))
-    cids = list(characters.keys())
-    for i, cid in enumerate(cids):
+    for i, cid in enumerate(char_ids):
         ch = characters[cid]
         y = 55 + i * 130
         color = C_HIGHLIGHT if i == cursor else C_WHITE
@@ -650,8 +703,14 @@ def main():
     generate_assets(args.rom)
     assets = Assets(extractor)
     characters = session.characters
-    char_ids = list(characters.keys())
 
+    # Blue is not playable at first: he is the fixed rival of the forest map,
+    # unlockable as a playable character only after defeating him.
+    def refresh_chars():
+        return [cid for cid in characters
+                if cid != "blue" or cid in session.unlocked]
+
+    char_ids = refresh_chars()
     session.state = "CHARACTER_SELECT"
 
     # State
@@ -671,6 +730,7 @@ def main():
     walker = SmoothWalker()
     pending_encounter = None
     pending_final = False
+    surf_transition = None  # {"type": "mount"/"dismount", "dir": ..., "ticks": ...}
 
     # Input buffer for held-key movement
     move_request = (0, 0)
@@ -730,7 +790,13 @@ def main():
                     elif event.key == pygame.K_BACKSPACE:
                         session.state = "STARTER_SELECT"
 
-
+                elif session.state in ("VICTORY", "GAME_OVER"):
+                    # Return to character select to start another run.
+                    if event.key in (pygame.K_RETURN, pygame.K_SPACE):
+                        char_ids = refresh_chars()
+                        char_cursor = 0
+                        selected_char = None
+                        session.state = "CHARACTER_SELECT"
 
 
 
@@ -840,6 +906,9 @@ def main():
         # --- smooth walk logic ---
         if session.state == "EXPLORING" and not show_inv and not dialogue_text:
             step_done = walker.update()
+            # A surf mount/dismount transition lasts exactly one walk step.
+            if step_done:
+                surf_transition = None
             # Pending encounter triggers AFTER walk animation completes
             if step_done and pending_encounter:
                 w = pending_encounter
@@ -851,8 +920,8 @@ def main():
                 dialogue_text = "RIVAL BATTLE! Get ready!"
                 dialogue_timer = 120; battle_cursor = 0; move_cursor = 0
                 pending_final = False
-            # If not currently walking, check for held keys
-            if not walker.walking:
+            # If not currently walking (or in a surf transition), check for held keys
+            if not walker.walking and not surf_transition:
                 keys = pygame.key.get_pressed()
                 dx, dy = 0, 0
                 if keys[pygame.K_UP]: dy = -1
@@ -871,6 +940,14 @@ def main():
                             dialogue_text = f"Entered {dest}!"
                             dialogue_timer = 60
                         else:
+                            if result.get("surf_mount") or result.get("surf_dismount"):
+                                # Getting on/off the Pokemon: glide onto the
+                                # tile while showing the boarding frame for the
+                                # whole step.
+                                surf_transition = {
+                                    "type": "mount" if result.get("surf_mount") else "dismount",
+                                    "dir": session.player.direction,
+                                }
                             walker.start_step(dx, dy)
                             if result.get("encounter"):
                                 pending_encounter = result["wild_creature"]
@@ -922,7 +999,7 @@ def main():
         screen.fill(C_BG)
 
         if session.state == "CHARACTER_SELECT":
-            draw_char_select(screen, font, characters, assets, char_cursor)
+            draw_char_select(screen, font, characters, assets, char_cursor, char_ids)
         elif session.state == "STARTER_SELECT":
             draw_starter_select(screen, font, characters, selected_char, assets, session.rom, starter_cursor)
         elif session.state == "MAP_SELECT":
@@ -930,7 +1007,7 @@ def main():
         elif session.state == "EXPLORING":
             draw_map(screen, session, assets, camera)
             draw_npcs(screen, session, assets, camera)
-            draw_player(screen, session, assets, camera, walker)
+            draw_player(screen, session, assets, camera, walker, surf_transition)
             draw_team_hud(screen, session, assets, font)
             draw_opponent_hud(screen, session, assets, font)
             draw_hud_bar(screen, session, font)
@@ -946,8 +1023,11 @@ def main():
                         (SCREEN_W//2 - 60, SCREEN_H//2 - 20))
             surface.blit(font.render("You defeated your rival!", True, C_WHITE),
                         (SCREEN_W//2 - 80, SCREEN_H//2 + 10))
-            surface.blit(font.render("ESC to exit", True, C_GREY),
-                        (SCREEN_W//2 - 40, SCREEN_H//2 + 40))
+            if "blue" in session.unlocked:
+                surface.blit(font.render("BLUE unlocked as a playable character!", True, (120, 220, 120)),
+                            (SCREEN_W//2 - 150, SCREEN_H//2 + 40))
+            surface.blit(font.render("Enter: new game | ESC: exit", True, C_GREY),
+                        (SCREEN_W//2 - 100, SCREEN_H//2 + 70))
         elif session.state == "GAME_OVER":
             screen.fill(C_DARK)
             go_txt = font.render("=== GAME OVER ===", True, C_RED)

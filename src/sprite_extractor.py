@@ -308,6 +308,41 @@ class SpriteExtractor:
             for name, pixels in mapping.items():
                 _write_png(os.path.join(out_dir, name), pixels, 16, 32)
 
+    def extract_surf_sprites(self):
+        """Extract the surfing overworld sprites (trainer riding a mount).
+
+        FireRed stores each playable character's surfing sprite as a raw 4bpp
+        sheet. Frame layout (16x32, 256 bytes each):
+            frame 0 = riding, facing south/down
+            frame 1 = riding, facing north/up
+            frame 2 = riding, facing west/left  (east = horizontal flip)
+            frame 9 = mounting/dismounting, south
+            frame 10= mounting/dismounting, north
+            frame 11= mounting/dismounting, west (east = flip)
+        Only Red and Green have dedicated surfing sheets; Blue falls back to
+        Green's. Results are written as PNGs next to the normal player sprites.
+        """
+        players = {
+            "player_red":   0x35C468,
+            "player_green": 0x35DB68,
+            "player_blue":  0x35DB68,
+        }
+        pal = self._palette_at(0x35B968)  # shared PLAYER overlay palette
+        out_dir = os.path.join(BASE_DIR, "assets")
+        os.makedirs(out_dir, exist_ok=True)
+        for prefix, sheet_off in players.items():
+            riding = self._decode_ow_frame(sheet_off, 2, pal)
+            mapping = {
+                f"{prefix}_surf_down.png":  self._decode_ow_frame(sheet_off, 0, pal),
+                f"{prefix}_surf_up.png":    self._decode_ow_frame(sheet_off, 1, pal),
+                f"{prefix}_surf_left.png":  riding,
+                f"{prefix}_surf_mount_down.png": self._decode_ow_frame(sheet_off, 9, pal),
+                f"{prefix}_surf_mount_up.png":   self._decode_ow_frame(sheet_off, 10, pal),
+                f"{prefix}_surf_mount_left.png": self._decode_ow_frame(sheet_off, 11, pal),
+            }
+            for name, pixels in mapping.items():
+                _write_png(os.path.join(out_dir, name), pixels, 16, 32)
+
     def _palette_at(self, offset):
         """Read a 16-color GBA RGB555 palette at a ROM file offset."""
         colors = []

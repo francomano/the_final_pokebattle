@@ -207,6 +207,7 @@ def generate_all(rom_path=None):
         # Real overworld player animations (up/down/left/right) from the ROM
         try:
             ext.extract_player_sprites()
+            ext.extract_surf_sprites()
         except Exception as e:
             print(f"[asset_generator] OW player sprites skipped: {e}")
         # Copy creature sprites to assets/

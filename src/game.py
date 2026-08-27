@@ -314,6 +314,7 @@ class PlayerState:
         self.direction = "down"
         self.steps = 0
         self.walk_frame = 0
+        self.surfing = False
 
     def active_creature(self):
         for c in self.team:
@@ -364,6 +365,7 @@ class GameSession:
         self.current_map_key = "forest_south"  # default, set in start_game
         self.previous_map_key = None
         self.previous_map_pos = (0, 0)
+        self.unlocked = set()  # character ids unlockable by defeating their rival (e.g. "blue")
 
     def load_data(self, rom_path=None):
         if rom_path is None:
@@ -392,9 +394,10 @@ class GameSession:
         self.player.x = sp[0]
         self.player.y = sp[1]
 
-        # Opponent gets the other spawn + different character/starter
-        other_chars = [c for c in self.characters.keys() if c != character_id]
-        opp_char = self.rng.choice(other_chars)
+        # Blue is the fixed rival of the forest map (not playable at the start).
+        opp_char = "blue" if "blue" in self.characters else next(
+            c for c in self.characters if c != character_id
+        )
         opp_starters = self.characters[opp_char]["starter_options"]
         opp_starter = self.rng.choice(opp_starters)["species"]
         self.opponent = OpponentState(opp_char, opp_starter, self.rom)
@@ -526,12 +529,26 @@ class GameSession:
         tile = self.get_tile_at(new_x, new_y)
         walkable = current_map.get("walkable_tiles", [])
 
-        # Water requires SURF
+        # Update direction first so the surf mount/dismount frame faces the
+        # right way before we decide whether this step changes surf state.
+        if dx > 0:
+            self.player.direction = "right"
+        elif dx < 0:
+            self.player.direction = "left"
+        elif dy > 0:
+            self.player.direction = "down"
+        elif dy < 0:
+            self.player.direction = "up"
+
+        surf = {"mount": False, "dismount": False}
+
+        # Water requires SURF and mounts the Pokemon on first contact
         if tile == 'w':
-            if self.player.has_surf():
-                pass  # can walk on water
-            else:
+            if not self.player.has_surf():
                 return {"blocked": True, "reason": "need_surf"}
+            if not self.player.surfing:
+                self.player.surfing = True
+                surf["mount"] = True  # play get-on animation
 
         # Cuttable tree requires CUT
         elif tile == 'C':
@@ -544,15 +561,11 @@ class GameSession:
         elif tile not in walkable:
             return {"blocked": True}
 
-        # Update direction
-        if dx > 0:
-            self.player.direction = "right"
-        elif dx < 0:
-            self.player.direction = "left"
-        elif dy > 0:
-            self.player.direction = "down"
-        elif dy < 0:
-            self.player.direction = "up"
+        else:
+            # Stepping from water onto land -> get off the Pokemon
+            if self.player.surfing:
+                self.player.surfing = False
+                surf["dismount"] = True
 
         self.player.x = new_x
         self.player.y = new_y
@@ -608,7 +621,7 @@ class GameSession:
 
         # Arena bounds removed - final battle triggers via NPC interaction only
 
-        return {"moved": True, "tile": tile}
+        return {"moved": True, "tile": tile, "surf_mount": surf["mount"], "surf_dismount": surf["dismount"]}
 
     def _trigger_wild_encounter(self, current_map, player_y):
         """Spawn wild creature based on zone."""
@@ -798,6 +811,9 @@ class GameSession:
             if self.final_battle_index >= len(self.opponent.team):
                 self.state = "VICTORY"
                 self.battle = None
+                # Defeating the fixed rival unlocks them as a playable character.
+                if self.opponent.character_id == "blue":
+                    self.unlocked.add("blue")
                 msgs.append("You defeated your rival's entire team! VICTORY!")
             else:
                 # Next opponent creature
