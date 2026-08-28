@@ -12,6 +12,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from game import GameSession, load_json, ASSET_DIR, BASE_DIR
 from sprite_extractor import SpriteExtractor
 from asset_generator import generate_all as generate_assets
+try:
+    from map_renderer import NIGHT_MODE
+except ImportError:
+    NIGHT_MODE = False
 # ---------- constants -------------------------------------------------------
 TILE_SIZE = 48
 VIEW_TILES_X = 15
@@ -107,6 +111,18 @@ class Assets:
         for ch, fname in TILE_FILES.items():
             s = self._img(os.path.join(ASSET_DIR, fname), (TILE_SIZE, TILE_SIZE))
             if s:
+                if NIGHT_MODE:
+                    # night-tint fallback tiles (I, N overlays) to match dark map
+                    try:
+                        # subtle darken + blue shift via multiply then alpha overlay
+                        mult = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+                        mult.fill((138, 140, 180, 255))
+                        s.blit(mult, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+                        overlay = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+                        overlay.fill((18, 20, 48, 28))
+                        s.blit(overlay, (0, 0))
+                    except Exception:
+                        pass
                 self.tiles[ch] = s
             else:
                 surf = pygame.Surface((TILE_SIZE, TILE_SIZE))
@@ -353,6 +369,15 @@ def draw_map(surface, session, assets, camera):
                 tile_surf = assets.get_tile(ch)
                 sx, sy = camera.to_screen(col * TILE_SIZE, row * TILE_SIZE)
                 surface.blit(tile_surf, (sx, sy))
+    # Night ambient overlay over the map viewport (doesn't affect HUD)
+    if NIGHT_MODE:
+        # Use set_alpha fallback if BLEND_RGBA_MULT not available
+        try:
+            night = pygame.Surface((VIEW_TILES_X * TILE_SIZE, VIEW_TILES_Y * TILE_SIZE), pygame.SRCALPHA)
+            night.fill((18, 20, 48, 38))
+            surface.blit(night, (0, 0))
+        except Exception:
+            pass
 
 
 def draw_npcs(surface, session, assets, camera):

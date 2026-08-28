@@ -19,9 +19,9 @@ The full design lives in [`idea.txt`](idea.txt). This README describes the **off
 ### What exists today (offline prototype)
 
 - Character select + starter pick, map exploration, wild encounters, and a final showdown.
-- **HM Cut** and **HM Surf** — Surf rides across water with real ROM overworld surf sprites and a smooth mount/dismount animation.
+- **HM Cut** and **HM Surf** — Surf rides across water with real ROM overworld surf sprites and a smooth mount/dismount animation (mount visible under the player).
 - **Blue is the fixed rival** of the forest map: he is not selectable at the start, and defeating him unlocks him as a playable character.
-- All sprites are extracted from the ROM at runtime (nothing pre-baked in the repo).
+- Night mode with darkened palettes and all sprites/tiles taken only from the user's ROM.
 
 ### Not yet implemented (planned, see idea.txt)
 
@@ -55,27 +55,24 @@ The full design lives in [`idea.txt`](idea.txt). This README describes the **off
 
 A single-player practice mode mirroring the online rules:
 
-- **Human-like AI** — the AI opponent moves differently every match.
-- **3-minute limit** is kept, like online.
-- **Replayability** — the same map type can be played many times, but every match plays out differently.
-- **Character unlocks** — new characters (playable character + starter) are unlocked by defeating them. Blue is removed from the playable roster and is always the rival in the forest map; defeating him unlocks him as playable.
 - **Static clue signs** — signs hold fixed clues on the map (e.g. where a rare creature is).
-- **Dynamic NPC dialogue** — NPCs change their dialogues/suggestions based on what the opponent is doing.
-- **Final trigger** — reach the **central area** and stand on a specific spot to start the final challenge; otherwise it triggers when the 3 minutes expire.
+- **Dynamic NPC dialogue** — NPCs change their dialogues/suggestions based on world state.
+- **Final trigger** — reach the **central area** and stand on a specific spot to start the final challenge.
 
 ---
 
 ## Current Features (offline prototype)
 
 - 🎮 **Character select** — Red and Leaf playable at the start (starter + rival pairing). Blue is the fixed forest rival, not selectable until defeated.
-- 🗺️ **Multi-map overworld** — Forest, River, Cave, Arena
-- 🌿 **Wild encounters** — trigger zones in tall grass
-- ⚔️ **Turn-based battle** — type effectiveness, STAB, accuracy, PP
-- 🪓 **HM Cut** — teach it and clear blocking trees
-- 🌊 **HM Surf** — teach it to a water-type, ride across water with real ROM overworld surf sprites and a smooth mount/dismount animation (player glides on/off the Pokémon)
-- 🏆 **Rival showdown** — the fixed rival (Blue) waits in the forest; defeating his whole team wins the match and unlocks him as playable
-- 🎒 **Inventory & Party** — items, healing, switching
-- 🖼️ **Runtime sprite extraction** — all assets generated from the ROM at runtime (nothing pre-baked in the repo)
+- 🗺️ **Multi-map overworld** — Forest (south/north), River, Cave, House, Arena — with portals/edge-connections and collision from `maps.json`
+- 🌙 **Night mode** — palettes darkened + blue moonlight tint and indigo overlay; applied to metatiles and object sprites at generation time and as a viewport overlay at render time
+- 🌿 **Wild encounters** — tall-grass (`g`) trigger zones with per-map encounter rate; fishing (`w`/`B`) with Old Rod
+- ⚔️ **Turn-based battle** — Gen III damage formula, type effectiveness, STAB, accuracy, PP, capture/flee
+- 🪓 **HM Cut — authentic sprite** — small tree is the real object-event cut tree taken only from the user's ROM; `C` renders as grass + sprite overlay and is replaced by path when cut
+- 🌊 **HM Surf + mount** — teach Surf to a water-type and ride; surf sprites are taken only from the user's ROM (water mount visible under the player) with mount/dismount frames
+- 🌲 **Forest rendering** — huge-tree 3×3 metatiles (`0x298-0x2A2`) from the ROM, segment-aligned for cleaner edges
+- 🏆 **Rival showdown** — the fixed rival (Blue) waits in the arena; defeating his whole team wins the match and unlocks him as playable
+- 🎒 **Inventory & Party** — items, key items (Old Rod), HMs, healing, switching, faint handling
 
 ---
 
@@ -95,11 +92,9 @@ pip install pygame
 
 ```bash
 # 1. Place your ROM file in the project root (any .gba file)
-# 2. Run the game — assets are generated automatically on first launch
+# 2. Run the game
 python src/frontend.py
 ```
-
-On first launch the game extracts all sprites (creatures, players, surf, NPCs, tiles) from the ROM into the `assets/` folder and `.sprite_cache/`.
 
 ---
 
@@ -108,31 +103,33 @@ On first launch the game extracts all sprites (creatures, players, surf, NPCs, t
 ```
 the_final_pokebattle/
 ├── src/
-│   ├── frontend.py          # Pygame rendering, input, game loop, animations
-│   ├── game.py              # Core game logic (movement, battle, state, timers)
-│   ├── rom_reader.py        # ROM data extraction (stats, moves, types)
-│   └── sprite_extractor.py  # Sprite + tileset extraction from ROM (incl. surf)
+│   ├── frontend.py          # Pygame rendering, input, camera, HUD, night overlay
+│   ├── game.py              # Core game logic (movement, battle, state, inventory)
+│   ├── rom_reader.py        # ROM data extraction (stats, moves, types, tilemaps)
+│   ├── sprite_extractor.py  # Creature / OW sprite extraction from ROM (decompression)
+│   ├── map_renderer.py      # ROM metatile rendering (forest, water, night palettes)
+│   └── asset_generator.py   # Glues sprites + maps together, palette handling
 ├── data/
 │   ├── maps.json            # Map layouts, portals, NPCs, walkable tiles, clue zones
-│   └── characters.json      # Playable characters and rival config
-├── custom_map_1_forest/
-│   └── map.json             # Map editor source data
+│   ├── characters.json      # Playable characters and rival config
+│   └── sprites.json         # Packed tile / UI sprites (decompressed at runtime)
+├── assets/                  # Generated at runtime (git-ignored), pre-rendered maps
+├── .sprite_cache/           # Generated at runtime (git-ignored), creature sprites
 ├── .gitignore
 ├── README.md
 ├── CONTRIBUTING.md
 └── idea.txt                 # Original game design notes
 ```
 
-> **Generated at runtime** (not committed): `assets/`, `.sprite_cache/`, `screenshots/`  
-> **User-provided** (not committed): ROM file (`.gba`)  
-> **Excluded** (reference only): `pokefirered/`
+> **Not committed**: `assets/`, `.sprite_cache/`, `screenshots/`  
+> **User-provided** (not committed): ROM file (`.gba`) — all game data and sprites are taken only from this file
 
 ---
 
 ## Game Flow (current offline prototype)
 
 1. **Character Select** → choose Red or Leaf (Blue is not selectable until unlocked)
-2. **Starter Pick** → each character's starter options (e.g. Bulbasaur, Charmander, Squirtle)
+2. **Starter Pick** → each character's starter options
 3. **Explore** → wild encounters in the forest; find HM Cut and HM Surf
 4. **Use HMs** → cut blocking trees, teach Surf and ride across the river
 5. **Final Battle** → reach the Rival in the forest to trigger the showdown
@@ -145,11 +142,12 @@ the_final_pokebattle/
 ## Technical Notes
 
 - Map backgrounds are pre-rendered PNGs scaled 3× at load; overlay system paints cut-tree patches and item pickups on top
+- Night mode darkens palettes and adds an indigo viewport overlay
 - Battle damage uses the Gen III formula: `((2*Level/5+2) * Power * A/D) / 50 + 2) * STAB * TypeEff`
 - Encounter rate is configurable per-tile in `maps.json`
-- Smooth walking uses frame-interpolated offsets (8 frames per tile)
-- Surf: mounted/unmounted overworld sprites are extracted from the ROM; the player rides across water with a mount animation on entry and a get-off animation when returning to land
-- All visual assets are extracted from the ROM at runtime — nothing proprietary is stored in the repository
+- Smooth walking uses frame-interpolated offsets (12 frames per tile)
+- Surf uses mount/dismount frames; forest uses 3×3 huge-tree metatiles segment-aligned for cleaner edges
+- Nothing proprietary is stored in the repository — all data comes only from the user's ROM
 
 ---
 

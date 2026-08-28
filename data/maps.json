@@ -172,25 +172,11 @@
     ],
     "npcs": [
       {
-        "x": 23,
-        "y": 4,
-        "name": "Fisher",
-        "sprite": "npc_fisher",
-        "dialogue": "Take this Old Rod and HM SURF! Fish a water pokemon, teach it Surf, and cross the river to reach the arena!",
-        "gives": "old_rod_and_surf"
-      },
-      {
         "x": 20,
         "y": 4,
         "name": "Hiker",
         "sprite": "npc_hiker",
         "dialogue": "Tip: Use the Old Rod to catch water pokemon. SURF lets you cross rivers!"
-      }
-    ],
-    "items_on_talk": [
-      {
-        "npc": "Fisher",
-        "item": "old_rod"
       }
     ],
     "walkable_tiles": [
@@ -690,6 +676,22 @@
       "T...D...T"
     ],
     "portals": [],
+    "npcs": [
+      {
+        "x": 4,
+        "y": 2,
+        "name": "Fisher",
+        "sprite": "npc_fisher",
+        "dialogue": "Take this Old Rod and HM SURF! Fish a water pokemon, teach it Surf, and cross the river to reach the arena!",
+        "gives": "old_rod_and_surf"
+      }
+    ],
+    "items_on_talk": [
+      {
+        "npc": "Fisher",
+        "item": "old_rod"
+      }
+    ],
     "walkable_tiles": [
       "D",
       "i",

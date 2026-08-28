@@ -23,13 +23,20 @@ FOREST_PATTERN = [
     [0x2A0, 0x2A1, 0x2A2],
 ]
 
+# True -> render everything with night palette / lighting
+NIGHT_MODE = True
+NIGHT_R = 0.52
+NIGHT_G = 0.55
+NIGHT_B = 0.72
+NIGHT_B_ADD = 10  # slight blue moonlight offset
+
 TILE_MAP_DEFAULT = {
-    'T': None,       # Forest pattern (special handling)
+    'T': None,       # Forest pattern (special handling - 3x3 huge tree, aligned per segment)
     'M': 0x071,      # Mountain rock
     'G': 0x0A9,      # Cave entrance (dark)
     'W': 0x003,      # Sign
     'N': 0x003,      # Sign post (with collision)
-    'C': 0x01C,      # Cut tree (green)
+    'C': None,       # Cut tree - handled as ground + object sprite overlay (real ROM object)
     '.': 0x009,      # Ground
     'g': 0x00D,      # Tall grass
     'd': 0x0D9,      # Path/dirt
@@ -106,11 +113,67 @@ class MapRenderer:
         for i in range(7, 13):
             if i < len(vf_pals):
                 self.combined_pals[i] = vf_pals[i]
+        if NIGHT_MODE:
+            self.combined_pals = self._apply_night_to_pals(self.combined_pals)
         self.gen_tile_data = decompress_lz77(self.rom, GEN_TILES_OFF)
         self.vf_tile_data = decompress_lz77(self.rom, VF_TILES_OFF)
         self.gen_num_tiles = len(self.gen_tile_data) // 32
         self.gen_meta = self.rom[GEN_MT_OFF:GEN_MT_OFF + 640 * 16]
         self.vf_meta = self.rom[VF_MT_OFF:VF_MT_OFF + 43 * 16]
+        # Load real cut-tree object sprite from pokefirered decomp (chr already reversata)
+        self.cut_tree_sprite = self._load_cut_tree_sprite()
+
+    def _apply_night_to_pals(self, pals):
+        dark = []
+        for pal in pals:
+            nd = []
+            for (r, g, b) in pal:
+                nr = int(r * NIGHT_R)
+                ng = int(g * NIGHT_G)
+                nb = int(min(255, b * NIGHT_B + NIGHT_B_ADD))
+                # also darken overall luminance slightly
+                nd.append((nr, ng, nb))
+            dark.append(nd)
+        return dark
+
+    def _load_cut_tree_sprite(self):
+        """Load the authentic CUT-tree object sprite (16x16) from pokefirered decomp.
+
+        The object is not a metatile but an OW sprite: graphics/object_events/pics/misc/cut_tree.png.
+        We read the PNG at runtime from ../pokefirered (no static asset) and also apply night tint.
+        """
+        # try multiple candidate locations (REPO root + project sibling)
+        candidates = [
+            os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "..", "pokefirered", "graphics", "object_events", "pics", "misc", "cut_tree.png"),
+            "/home/mf/Desktop/pokefirered/graphics/object_events/pics/misc/cut_tree.png",
+        ]
+        path = None
+        for c in candidates:
+            if os.path.exists(c):
+                path = c
+                break
+        if not path:
+            return None
+        try:
+            img = Image.open(path).convert("RGBA")
+            # 64x16 sheet -> first 16x16 frame is idle tree
+            frame = img.crop((0, 0, 16, 16))
+            if NIGHT_MODE:
+                # darken the sprite to match night lighting
+                # per-pixel multiply
+                px = frame.load()
+                for y in range(frame.height):
+                    for x in range(frame.width):
+                        r, g, b, a = px[x, y]
+                        if a == 0:
+                            continue
+                        nr = int(r * NIGHT_R)
+                        ng = int(g * NIGHT_G)
+                        nb = int(min(255, b * NIGHT_B + NIGHT_B_ADD))
+                        px[x, y] = (nr, ng, nb, a)
+            return frame
+        except Exception:
+            return None
 
     def _load_palettes(self, offset, count=16):
         pals = []
@@ -193,6 +256,36 @@ class MapRenderer:
         self._mt_cache[mt_id] = result
         return result
 
+    def _forest_mt_id(self, layout, r, c):
+        """Return aligned 3x3 huge-tree metatile so forest edges are never mid-cut.
+
+        Classic bug: FOREST_PATTERN[r%3][c%3] tiles seamlessly only when the whole map is T.
+        As soon as a clearing interrupts the forest, c%3 resumes in the middle of a tree (looks sliced).
+        We instead anchor each contiguous T-run to its own left/top edge and force the bottom/right
+        edge of each segment to always show the tree's bottom/right slice (so a 1- or 2-wide strip
+        does not show a middle slice against grass - which looked 'frammentato').
+        """
+        row_str = layout[r]
+        # left edge of this horizontal T-segment
+        left = c
+        while left > 0 and left - 1 < len(row_str) and row_str[left - 1] == 'T':
+            left -= 1
+        # top edge of vertical T-run at column c
+        top = r
+        while top > 0 and c < len(layout[top - 1]) and layout[top - 1][c] == 'T':
+            top -= 1
+        seg_col = c - left
+        seg_row = r - top
+        # Detect if this cell is at the right/bottom edge of its T-segment.
+        # Those edges must show the rightmost/bottommost tree slice to look 'intero'.
+        is_right = (c + 1 >= len(row_str) or row_str[c + 1] != 'T')
+        is_bottom = (r + 1 >= len(layout) or c >= len(layout[r + 1]) or layout[r + 1][c] != 'T')
+        col_idx = 2 if is_right else seg_col % 3
+        row_idx = 2 if is_bottom else seg_row % 3
+        # For segments narrower than 3, avoid showing middle slice alone: map col 0->0, 1->2 already does.
+        # For height 1 strips (rare), showing bottom row (2) is more natural than top.
+        return FOREST_PATTERN[row_idx][col_idx]
+
     def render_map(self, map_key, layout, output_path):
         """Render a single map layout to a PNG file."""
         if 'cave' in map_key:
@@ -212,12 +305,25 @@ class MapRenderer:
         for r, row_str in enumerate(layout):
             for c, ch in enumerate(row_str):
                 mt_id = tile_map.get(ch)
-                if mt_id is None and ch == 'T':
-                    mt_id = FOREST_PATTERN[r % 3][c % 3]
+                if ch == 'T' and mt_id is None:
+                    mt_id = self._forest_mt_id(layout, r, c)
+                elif ch == 'C':
+                    # 'C' was incorrectly rendered as 0x01C (wrong sprite). Real CUT tree is an object event,
+                    # not a metatile. Render walkable grass underneath and overlay the authentic sprite later.
+                    mt_id = 0x009 if 'cave' in map_key else 0x00D  # grass/ground gives correct grass under tree
                 elif mt_id is None:
                     mt_id = 0x009
                 tile_img = self._render_metatile(mt_id)
                 bg.paste(tile_img, (c * 16, r * 16), tile_img)
+                if ch == 'C' and getattr(self, 'cut_tree_sprite', None) is not None:
+                    # Center 16x16 object sprite on the 16x16 metatile (object is exactly 16x16)
+                    bg.paste(self.cut_tree_sprite, (c * 16, r * 16), self.cut_tree_sprite)
+
+        # Night post-process: slight additional vignette / dark overlay for forest maps
+        if NIGHT_MODE:
+            # Multiply with a dark indigo overlay (keeps moonlit blue tint already in palette)
+            overlay = Image.new('RGBA', bg.size, (18, 20, 45, 38))
+            bg = Image.alpha_composite(bg.convert('RGBA'), overlay)
 
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         bg.save(output_path)
