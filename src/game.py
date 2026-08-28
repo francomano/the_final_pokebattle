@@ -345,11 +345,17 @@ class PlayerState:
 # ---------- Game Session (state machine) ------------------------------------
 
 class GameSession:
-    STATES = ("TITLE", "CHARACTER_SELECT", "STARTER_SELECT", "EXPLORING",
+    STATES = ("MODE_SELECT", "TITLE", "CHARACTER_SELECT", "STARTER_SELECT", "MAP_SELECT", "EXPLORING",
               "BATTLE", "FINAL_BATTLE", "INVENTORY", "DIALOGUE", "GAME_OVER", "VICTORY")
+
+    # Centro mappa: punto stabilito al centro dove scatta il teletrasporto/battaglia finale
+    CENTER_MAP = "area_central"
+    CENTER_POS = (10, 5)  # dentro arena_bounds, dove sta Rival
+    TIMER_SECONDS = 180  # 3 minuti
 
     def __init__(self):
         self.state = "TITLE"
+        self.mode = None  # "offline" or "online"
         self.player = None
         self.opponent = None
         self.map_data = None
@@ -366,6 +372,14 @@ class GameSession:
         self.previous_map_key = None
         self.previous_map_pos = (0, 0)
         self.unlocked = set()  # character ids unlockable by defeating their rival (e.g. "blue")
+        # Timer & IA (Blue)
+        self.timer = self.TIMER_SECONDS
+        self.ai_x = 0
+        self.ai_y = 0
+        self.ai_map_key = "forest_south"
+        self.ai_direction = "down"
+        self.ai_tick = 0  # frames since last AI step
+        self.ai_speed = 18  # frames per tile (più lento del player)
 
     def load_data(self, rom_path=None):
         if rom_path is None:
@@ -401,6 +415,15 @@ class GameSession:
         opp_starters = self.characters[opp_char]["starter_options"]
         opp_starter = self.rng.choice(opp_starters)["species"]
         self.opponent = OpponentState(opp_char, opp_starter, self.rom)
+
+        # Timer e IA: IA spawn opposto al player
+        self.timer = self.TIMER_SECONDS
+        other_map = "forest_north" if self.current_map_key == "forest_south" else "forest_south"
+        self.ai_map_key = other_map
+        sp_ai = self.map_data[self.ai_map_key]["spawn"]
+        self.ai_x, self.ai_y = sp_ai[0], sp_ai[1]
+        self.ai_direction = "down"
+        self.ai_tick = 0
 
         self.state = "EXPLORING"
 
@@ -849,3 +872,196 @@ class GameSession:
             self.player.team[creature_idx].heal(20)
             return f"{self.player.team[creature_idx].name} healed!"
         return "Invalid creature."
+
+    # ---------- Timer & IA (Blue) & centro mappa -----------------------------
+
+    def update(self, dt):
+        """Chiamato ogni frame da frontend quando in EXPLORING: aggiorna timer e muove IA."""
+        if self.state != "EXPLORING" or self.player is None:
+            return None
+        # Timer 3 minuti
+        self.timer -= dt
+        if self.timer <= 0:
+            self.timer = 0
+            # tempo scaduto -> teletrasporto entrambi al centro e battaglia
+            return self._trigger_center_battle("time_up")
+
+        # IA Blue: si muove verso il centro
+        self.ai_tick += 1
+        if self.ai_tick >= self.ai_speed:
+            self.ai_tick = 0
+            self._ai_step_towards_center()
+            # controlla se IA ha raggiunto il centro
+            if self.ai_map_key == self.CENTER_MAP and (self.ai_x, self.ai_y) == self.CENTER_POS:
+                return self._trigger_center_battle("ai_reached")
+            # controlla se player ha raggiunto il centro (anche se IA non si è mossa)
+            if self.current_map_key == self.CENTER_MAP and (self.player.x, self.player.y) == self.CENTER_POS:
+                return self._trigger_center_battle("player_reached")
+        else:
+            # check player center anche senza IA step (per reattività)
+            if self.current_map_key == self.CENTER_MAP and (self.player.x, self.player.y) == self.CENTER_POS:
+                return self._trigger_center_battle("player_reached")
+        return None
+
+    def _trigger_center_battle(self, reason):
+        """Teletrasporta l'altro al centro e avvia la battaglia finale."""
+        # porta entrambi su area_central centro
+        self.current_map_key = self.CENTER_MAP
+        self.ai_map_key = self.CENTER_MAP
+        cx, cy = self.CENTER_POS
+        self.player.x, self.player.y = cx, cy + 1  # player appena sotto il centro
+        self.ai_x, self.ai_y = cx, cy  # IA sul centro (dove stava Rival)
+        # avvia battaglia finale
+        return self._trigger_final_battle()
+
+    def _ai_can_traverse(self, map_key, x, y):
+        """IA può attraversare più tipi (ha Cut/Surf virtuali)."""
+        layout = self.map_data[map_key]["layout"]
+        if not (0 <= y < len(layout) and 0 <= x < len(layout[0])):
+            return False
+        ch = layout[y][x]
+        # IA ignora blocchi Cut/Water come se avesse HM
+        if ch in ('T', 'M', 'G', 'W', 'N', 'F', 'H', '[', ']', '^', '~', '`', 'E', 'A'):
+            # T = albero è bloccante per IA (non taglia) -> evita, ma se necessario passa
+            return False
+        # walkable include water/cut per IA
+        # consideriamo walkable anche g,d,w,B,C,I,.,N etc
+        return True
+
+    def _ai_neighbors(self, map_key, x, y):
+        """Ritorna vicini (map_key,x,y) raggiungibili da IA in un passo."""
+        res = []
+        data = self.map_data[map_key]
+        layout = data["layout"]
+        h, w = len(layout), len(layout[0])
+        # 4 direzioni
+        for dx, dy in [(0,-1),(0,1),(-1,0),(1,0)]:
+            nx, ny = x+dx, y+dy
+            # bordo mappa -> edge connection
+            if not (0 <= ny < h and 0 <= nx < w):
+                edges = data.get("edge_connections", {})
+                direction = None
+                if ny < 0: direction="north"
+                elif ny >= h: direction="south"
+                elif nx < 0: direction="west"
+                elif nx >= w: direction="east"
+                dest_key = edges.get(direction)
+                if dest_key and dest_key in self.map_data:
+                    dest_layout = self.map_data[dest_key]["layout"]
+                    # landing come in _edge_landing: nearest walkable col/row
+                    # semplificato: spawn nearest
+                    # per IA basta atterrare su walkable
+                    if direction=="north":
+                        row = len(dest_layout)-1
+                        # trova colonna walkable più vicina a x
+                        best=None; bestd=1e9
+                        for c in range(len(dest_layout[0])):
+                            if self._ai_can_traverse(dest_key,c,row):
+                                d=abs(c-x)
+                                if d<bestd: bestd=d; best=c
+                        if best is not None:
+                            res.append((dest_key,best,row))
+                    elif direction=="south":
+                        row=0
+                        best=None; bestd=1e9
+                        for c in range(len(dest_layout[0])):
+                            if self._ai_can_traverse(dest_key,c,row):
+                                d=abs(c-x)
+                                if d<bestd: bestd=d; best=c
+                        if best is not None:
+                            res.append((dest_key,best,row))
+                    elif direction=="west":
+                        col=len(dest_layout[0])-1
+                        best=None; bestd=1e9
+                        for r in range(len(dest_layout)):
+                            if self._ai_can_traverse(dest_key,col,r):
+                                d=abs(r-y)
+                                if d<bestd: bestd=d; best=r
+                        if best is not None:
+                            res.append((dest_key,col,best))
+                    elif direction=="east":
+                        col=0
+                        best=None; bestd=1e9
+                        for r in range(len(dest_layout)):
+                            if self._ai_can_traverse(dest_key,col,r):
+                                d=abs(r-y)
+                                if d<bestd: bestd=d; best=r
+                        if best is not None:
+                            res.append((dest_key,col,best))
+                continue
+            if self._ai_can_traverse(map_key, nx, ny):
+                # evita NPC/sign come per player
+                blocked=False
+                for npc in data.get("npcs", []):
+                    if npc["x"]==nx and npc["y"]==ny and npc.get("name")=="Rival":
+                        continue
+                    if npc["x"]==nx and npc["y"]==ny:
+                        blocked=True; break
+                if blocked: continue
+                # portal -> teletrasporto diretto
+                for portal in data.get("portals", []):
+                    if portal["x"]==nx and portal["y"]==ny:
+                        res.append((portal["dest_map"], portal["dest_x"], portal["dest_y"]))
+                        blocked=True; break
+                if blocked: continue
+                res.append((map_key,nx,ny))
+        # portal da posizione attuale (se IA è su portal tile, può entrare anche senza muoversi? gestito sopra)
+        return res
+
+    def _ai_step_towards_center(self):
+        """Muove IA di un tile verso il centro con BFS."""
+        if self.ai_map_key == self.CENTER_MAP and (self.ai_x, self.ai_y) == self.CENTER_POS:
+            return
+        target = (self.CENTER_MAP, self.CENTER_POS[0], self.CENTER_POS[1])
+        start = (self.ai_map_key, self.ai_x, self.ai_y)
+        if start == target:
+            return
+        # BFS
+        from collections import deque
+        queue=deque([start])
+        prev={start: None}
+        visited=set([start])
+        found=None
+        # limita ricerca per performance
+        steps=0
+        while queue and steps < 2000:
+            cur=queue.popleft()
+            steps+=1
+            if cur==target:
+                found=cur; break
+            ck,cx,cy = cur
+            for nb in self._ai_neighbors(ck,cx,cy):
+                if nb not in visited:
+                    visited.add(nb)
+                    prev[nb]=cur
+                    queue.append(nb)
+        if target not in prev and found is None:
+            # nessun path: muovi random walkable
+            neigh=self._ai_neighbors(self.ai_map_key,self.ai_x,self.ai_y)
+            if neigh:
+                # preferisci quelli più vicini al target (euclideo su mappa center)
+                # scegli random tra vicini
+                choice=self.rng.choice(neigh)
+                self.ai_map_key, self.ai_x, self.ai_y = choice
+                # aggiorna direzione
+                if choice[1] > self.ai_x: self.ai_direction="right"
+                elif choice[1] < self.ai_x: self.ai_direction="left"
+                elif choice[2] > self.ai_y: self.ai_direction="down"
+                elif choice[2] < self.ai_y: self.ai_direction="up"
+            return
+        # ricostruisci path
+        path=[]
+        cur=target
+        while cur is not None and cur != start:
+            path.append(cur)
+            cur=prev.get(cur)
+        path.reverse()
+        if path:
+            nxt=path[0]
+            # aggiorna direzione
+            _, nx, ny = nxt
+            if nx > self.ai_x: self.ai_direction="right"
+            elif nx < self.ai_x: self.ai_direction="left"
+            elif ny > self.ai_y: self.ai_direction="down"
+            elif ny < self.ai_y: self.ai_direction="up"
+            self.ai_map_key, self.ai_x, self.ai_y = nxt

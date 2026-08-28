@@ -18,17 +18,18 @@ The full design lives in [`idea.txt`](idea.txt). This README describes the **off
 
 ### What exists today (offline prototype)
 
+- **Mode select** — Online (placeholder "non disponibile") / Offline (Campagna) → Offline goes to character select.
 - Character select + starter pick, map exploration, wild encounters, and a final showdown.
 - **HM Cut** and **HM Surf** — Surf rides across water with real ROM overworld surf sprites and a smooth mount/dismount animation (mount visible under the player).
 - **Blue is the fixed rival** of the forest map: he is not selectable at the start, and defeating him unlocks him as a playable character.
+- **Campagna 3 min + IA** — 3-minute timer in HUD, Blue (IA) moves toward the center with BFS, and reaching the central point teleports the other player and starts the final battle automatically; timer expiry also triggers the finale.
+- **Facce allenatori in HUD** — trainer front pics taken only from the user's ROM, shown top-left (player) and top-right (rival).
 - Night mode with darkened palettes and all sprites/tiles taken only from the user's ROM.
 
 ### Not yet implemented (planned, see idea.txt)
 
-- Human-like AI opponent that moves differently every match.
-- The 3-minute adventure timer and the central-area final-battle trigger.
-- Dynamic NPC dialogue driven by the opponent's actions, and more character unlocks.
 - The online server (chat, clue loading, keeping only the winner).
+- More character unlocks beyond Blue.
 
 ---
 
@@ -63,7 +64,10 @@ A single-player practice mode mirroring the online rules:
 
 ## Current Features (offline prototype)
 
+- 🎮 **Mode select** — Online (placeholder) / Offline Campagna
 - 🎮 **Character select** — Red and Leaf playable at the start (starter + rival pairing). Blue is the fixed forest rival, not selectable until defeated.
+- ⏱️ **3-minute Campagna + IA** — HUD timer (180s), Blue moves via BFS toward the center (`area_central` 10,5); reaching the center teleports the other and starts the final battle; timer expiry also triggers the finale
+- 🧑‍🤝‍🧑 **Trainer faces in HUD** — front pics taken only from the user's ROM (top-left player, top-right rival) alongside team HP bars
 - 🗺️ **Multi-map overworld** — Forest (south/north), River, Cave, House, Arena — with portals/edge-connections and collision from `maps.json`
 - 🌙 **Night mode** — palettes darkened + blue moonlight tint and indigo overlay; applied to metatiles and object sprites at generation time and as a viewport overlay at render time
 - 🌿 **Wild encounters** — tall-grass (`g`) trigger zones with per-map encounter rate; fishing (`w`/`B`) with Old Rod
@@ -71,7 +75,7 @@ A single-player practice mode mirroring the online rules:
 - 🪓 **HM Cut — authentic sprite** — small tree is the real object-event cut tree taken only from the user's ROM; `C` renders as grass + sprite overlay and is replaced by path when cut
 - 🌊 **HM Surf + mount** — teach Surf to a water-type and ride; surf sprites are taken only from the user's ROM (water mount visible under the player) with mount/dismount frames
 - 🌲 **Forest rendering** — huge-tree 3×3 metatiles (`0x298-0x2A2`) from the ROM, segment-aligned for cleaner edges
-- 🏆 **Rival showdown** — the fixed rival (Blue) waits in the arena; defeating his whole team wins the match and unlocks him as playable
+- 🏆 **Rival showdown** — the rival (Blue) waits in the center; defeating his whole team wins the match and unlocks him as playable
 - 🎒 **Inventory & Party** — items, key items (Old Rod), HMs, healing, switching, faint handling
 
 ---
@@ -128,14 +132,13 @@ the_final_pokebattle/
 
 ## Game Flow (current offline prototype)
 
+0. **Mode Select** → Online (shows "non disponibile") / Offline Campagna → Offline goes to character select
 1. **Character Select** → choose Red or Leaf (Blue is not selectable until unlocked)
 2. **Starter Pick** → each character's starter options
-3. **Explore** → wild encounters in the forest; find HM Cut and HM Surf
+3. **Explore (3 min)** → timer in HUD center-top, faces in HUD corners, Blue IA moves toward the center; wild encounters; find HM Cut and HM Surf
 4. **Use HMs** → cut blocking trees, teach Surf and ride across the river
-5. **Final Battle** → reach the Rival in the forest to trigger the showdown
+5. **Final Battle** → reaching the central point (`area_central` 10,5) teleports the other player and starts the showdown; timer expiry also teleports both and starts it
 6. **Victory** → defeat the rival's whole team to win — and defeat Blue to unlock him as playable for the next run
-
-> Note: the 3-minute adventure timer and the central-area trigger are the next planned step (see idea.txt) and are not wired up yet.
 
 ---
 
@@ -145,8 +148,9 @@ the_final_pokebattle/
 - Night mode darkens palettes and adds an indigo viewport overlay
 - Battle damage uses the Gen III formula: `((2*Level/5+2) * Power * A/D) / 50 + 2) * STAB * TypeEff`
 - Encounter rate is configurable per-tile in `maps.json`
-- Smooth walking uses frame-interpolated offsets (12 frames per tile)
+- Smooth walking uses frame-interpolated offsets (12 frames per tile); IA Blue uses BFS toward the center and moves every 18 frames
 - Surf uses mount/dismount frames; forest uses 3×3 huge-tree metatiles segment-aligned for cleaner edges
+- HUD shows 3-minute countdown and trainer front pics (taken only from the user's ROM)
 - Nothing proprietary is stored in the repository — all data comes only from the user's ROM
 
 ---

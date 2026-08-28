@@ -138,6 +138,56 @@ class Assets:
                 self.npcs[name] = s
         # fallback
         self.npc = self.npcs.get("npc_boy")
+        # trainer faces (battaglia) — presi dalla ROM (front pics Red/Leaf/Rival) a runtime
+        self.trainer_faces = {}
+        self._load_trainer_faces()
+
+    def _load_trainer_faces(self):
+        # sorgente solo dalla ROM / decomp chr a runtime, ma se non trovata fallback OW
+        import pathlib
+        mapping = {
+            "red": "red_front_pic.png",
+            "leaf": "leaf_front_pic.png",
+            "green": "leaf_front_pic.png",
+            "blue": "champion_rival_front_pic.png",
+        }
+        for char_id, fname in mapping.items():
+            candidates = [
+                os.path.join(BASE_DIR, "..", "pokefirered", "graphics", "trainers", "front_pics", fname),
+                f"/home/mf/Desktop/pokefirered/graphics/trainers/front_pics/{fname}",
+            ]
+            path = next((c for c in candidates if os.path.exists(c)), None)
+            img = None
+            if path:
+                try:
+                    # PNG è 64x64 o 80x80 con palette; convertiamo
+                    from PIL import Image as PILImage
+                    pil = PILImage.open(path).convert("RGBA")
+                    # centra e ritaglia 64x64 -> 48x48 per HUD
+                    # alcuni front pics sono 64x64, altri 80x80; prendiamo centro
+                    w, h = pil.size
+                    # salva temporaneo per pygame
+                    tmp = f"/tmp/trainer_{char_id}.png"
+                    pil.save(tmp)
+                    img = self._img(tmp, (48, 48))
+                except Exception:
+                    img = None
+            if img is None:
+                # fallback: usa OW sprite down come faccia
+                prefix = {"red":"player_red","leaf":"player_green","green":"player_green","blue":"player_blue"}.get(char_id, "player_red")
+                self.load_player(prefix)
+                img = self.player_frame(prefix, "down", 0)
+                if img:
+                    # ritaglia testa
+                    try:
+                        img = pygame.transform.scale(img, (48, 48))
+                    except Exception:
+                        pass
+            if img:
+                self.trainer_faces[char_id] = img
+
+    def get_trainer_face(self, char_id):
+        return self.trainer_faces.get(char_id) or self.trainer_faces.get("red")
 
     def get_npc_sprite(self, sprite_name):
         return self.npcs.get(sprite_name, self.npc)
@@ -380,6 +430,24 @@ def draw_map(surface, session, assets, camera):
             pass
 
 
+def draw_ai(surface, session, assets, camera):
+    # IA Blue visibile solo se sulla stessa mappa del player
+    if not hasattr(session, "ai_map_key") or session.ai_map_key != session.current_map_key:
+        return
+    if not session.opponent:
+        return
+    opp_char = session.characters.get(session.opponent.character_id, {})
+    prefix = opp_char.get("sprite_prefix", "player_blue")
+    assets.load_player(prefix)
+    # usa direzione IA
+    direction = getattr(session, "ai_direction", "down")
+    frame = assets.player_frame(prefix, direction, 0)
+    if not frame:
+        frame = assets.player_frame(prefix, "down", 0)
+    if frame:
+        sx, sy = camera.to_screen(session.ai_x * TILE_SIZE, session.ai_y * TILE_SIZE)
+        surface.blit(frame, (sx, sy - TILE_SIZE))
+
 def draw_npcs(surface, session, assets, camera):
     for npc in session.get_current_map().get("npcs", []):
         sx, sy = camera.to_screen(npc["x"] * TILE_SIZE, npc["y"] * TILE_SIZE)
@@ -441,13 +509,19 @@ def draw_player(surface, session, assets, camera, walker, surf_transition=None):
 
 
 def draw_team_hud(surface, session, assets, font):
-    """Player team in top-left with semi-transparent background."""
-    hud_bg = pygame.Surface((230, 54), pygame.SRCALPHA)
+    """Player team in top-left with semi-transparent background + faccia allenatore presa dalla ROM."""
+    hud_bg = pygame.Surface((285, 54), pygame.SRCALPHA)
     hud_bg.fill((0, 0, 0, 100))
     surface.blit(hud_bg, (0, 0))
+    # faccia player (battaglia) a sx
+    if session.player:
+        face = assets.get_trainer_face(session.player.character_id)
+        if face:
+            surface.blit(face, (2, 3))
+    off = 52
     for i, creature in enumerate(session.player.team[:6]):
         sprite = assets.get_creature(creature.species_id, (40, 40))
-        x = 5 + i * 38
+        x = off + i * 38
         surface.blit(sprite, (x, 2))
         # HP bar
         ratio = creature.hp / creature.max_hp
@@ -463,40 +537,47 @@ def draw_team_hud(surface, session, assets, font):
 def draw_opponent_hud(surface, session, assets, font):
     if not session.opponent:
         return
-    x0 = SCREEN_W - 180
+    x0 = SCREEN_W - 235
     # Calculate box height based on known info
     box_h = 58
     if session.opponent.known_team_count:
         box_h += 16
     if getattr(session.opponent, "known_level", False):
         box_h += 16
-    opp_bg = pygame.Surface((185, box_h), pygame.SRCALPHA)
+    opp_bg = pygame.Surface((240, box_h), pygame.SRCALPHA)
     opp_bg.fill((0, 0, 0, 100))
     surface.blit(opp_bg, (x0 - 5, 0))
+    # faccia rival presa dalla ROM
+    face = assets.get_trainer_face(session.opponent.character_id)
+    if face:
+        surface.blit(face, (x0, 3))
+        x0t = x0 + 52
+    else:
+        x0t = x0
     opp_char = session.characters.get(session.opponent.character_id, {})
     name = opp_char.get("name", "Rival")
     lbl = font.render(f"Rival: {name}", True, C_WHITE)
-    surface.blit(lbl, (x0, 3))
+    surface.blit(lbl, (x0t, 3))
     if session.opponent.known_starter:
         sp = session.opponent.starter_species
         sprite = assets.get_creature(sp, (32, 32))
-        surface.blit(sprite, (x0, 18))
+        surface.blit(sprite, (x0t, 18))
         sn = font.render(session.rom.read_species_name(sp), True, C_WHITE)
-        surface.blit(sn, (x0 + 35, 24))
+        surface.blit(sn, (x0t + 35, 24))
     else:
-        surface.blit(font.render("Starter: ??", True, C_GREY), (x0, 22))
+        surface.blit(font.render("Starter: ??", True, C_GREY), (x0t, 22))
     if session.opponent.known_items:
-        surface.blit(font.render("Items: Potions", True, C_WHITE), (x0, 40))
+        surface.blit(font.render("Items: Potions", True, C_WHITE), (x0t, 40))
     else:
-        surface.blit(font.render("Items: ??", True, C_GREY), (x0, 40))
+        surface.blit(font.render("Items: ??", True, C_GREY), (x0t, 40))
     y_off = 56
     if session.opponent.known_team_count:
         tc = len(session.opponent.team)
-        surface.blit(font.render(f"Team: {tc} creatures", True, C_WHITE), (x0, y_off))
+        surface.blit(font.render(f"Team: {tc} creatures", True, C_WHITE), (x0t, y_off))
         y_off += 16
     if getattr(session.opponent, "known_level", False):
         max_lv = max(c.level for c in session.opponent.team)
-        surface.blit(font.render(f"Max Lv: {max_lv}", True, C_WHITE), (x0, y_off))
+        surface.blit(font.render(f"Max Lv: {max_lv}", True, C_WHITE), (x0t, y_off))
 
 
 def draw_hud_bar(surface, session, font):
@@ -682,6 +763,36 @@ def draw_starter_select(surface, font, characters, char_id, assets, rom, cursor)
                 (SCREEN_W//2 - 120, SCREEN_H - 25))
 
 
+def draw_mode_select(surface, font, cursor):
+    surface.fill(C_BG)
+    surface.blit(font.render("THE FINAL POKEBATTLE", True, C_HIGHLIGHT),
+                (SCREEN_W//2 - 110, 30))
+    surface.blit(font.render("Scegli modalita", True, C_WHITE),
+                (SCREEN_W//2 - 70, 60))
+    modes = [("ONLINE", "Gioca online"), ("OFFLINE (Campagna)", "Avventura offline")]
+    for i, (name, desc) in enumerate(modes):
+        y = 120 + i * 70
+        color = C_HIGHLIGHT if i == cursor else C_WHITE
+        marker = "> " if i == cursor else "  "
+        surface.blit(font.render(f"{marker}{name}", True, color),
+                    (SCREEN_W//2 - 90, y))
+        surface.blit(font.render(desc, True, C_GREY),
+                    (SCREEN_W//2 - 90, y + 20))
+    surface.blit(font.render("Up/Down + Enter", True, C_GREY),
+                (SCREEN_W//2 - 70, SCREEN_H - 25))
+
+def draw_timer(surface, font, seconds):
+    m = int(seconds) // 60
+    s = int(seconds) % 60
+    txt = f"{m:01d}:{s:02d}"
+    color = C_WHITE if seconds > 30 else C_RED
+    # top center
+    bg = pygame.Surface((80, 24), pygame.SRCALPHA)
+    bg.fill((0, 0, 0, 120))
+    surface.blit(bg, (SCREEN_W//2 - 40, 2))
+    lbl = font.render(txt, True, color)
+    surface.blit(lbl, (SCREEN_W//2 - lbl.get_width()//2, 7))
+
 def draw_map_select(surface, font, available_maps, cursor):
     surface.fill(C_BG)
     surface.blit(font.render("SELECT MAP", True, C_HIGHLIGHT),
@@ -736,9 +847,10 @@ def main():
                 if cid != "blue" or cid in session.unlocked]
 
     char_ids = refresh_chars()
-    session.state = "CHARACTER_SELECT"
+    session.state = "MODE_SELECT"
 
     # State
+    mode_cursor = 0  # 0=Online, 1=Offline
     char_cursor = 0
     starter_cursor = 0
     map_cursor = 0
@@ -775,6 +887,24 @@ def main():
                     else:
                         running = False
 
+                elif session.state == "MODE_SELECT":
+                    if event.key in (pygame.K_UP, pygame.K_LEFT):
+                        mode_cursor = (mode_cursor - 1) % 2
+                    elif event.key in (pygame.K_DOWN, pygame.K_RIGHT):
+                        mode_cursor = (mode_cursor + 1) % 2
+                    elif event.key == pygame.K_RETURN:
+                        if mode_cursor == 0:
+                            dialogue_text = "Online non disponibile"
+                            dialogue_speaker = "Sistema"
+                            dialogue_timer = 120
+                        else:
+                            session.mode = "offline"
+                            char_ids = refresh_chars()
+                            char_cursor = 0
+                            session.state = "CHARACTER_SELECT"
+                    elif event.key == pygame.K_ESCAPE:
+                        running = False
+
                 elif session.state == "CHARACTER_SELECT":
                     if event.key in (pygame.K_UP, pygame.K_LEFT):
                         char_cursor = (char_cursor - 1) % len(char_ids)
@@ -784,6 +914,8 @@ def main():
                         selected_char = char_ids[char_cursor]
                         starter_cursor = 0
                         session.state = "STARTER_SELECT"
+                    elif event.key == pygame.K_BACKSPACE:
+                        session.state = "MODE_SELECT"
 
                 elif session.state == "STARTER_SELECT":
                     sts = characters[selected_char]["starter_options"]
@@ -928,6 +1060,23 @@ def main():
                             if msgs:
                                 dialogue_text = " | ".join(msgs[-2:]); dialogue_timer = 110
 
+        # --- timer & IA update (3 min + centro) ---
+        if session.state == "EXPLORING" and session.player:
+            dt = 1.0 / FPS
+            res = session.update(dt)
+            # session.update may have switched to FINAL_BATTLE and repositioned player
+            if res is not None or session.state == "FINAL_BATTLE":
+                if session.state == "FINAL_BATTLE":
+                    m = session.get_current_map()
+                    camera = Camera(m["width"], m["height"])
+                    walker.reset()
+                    assets.map_bg = None
+                    dialogue_text = "Centro raggiunto! Battaglia finale!"
+                    dialogue_timer = 120
+                    battle_cursor = 0; move_cursor = 0
+                    pending_final = False
+                    pending_encounter = None
+
         # --- smooth walk logic ---
         if session.state == "EXPLORING" and not show_inv and not dialogue_text:
             step_done = walker.update()
@@ -1023,7 +1172,9 @@ def main():
         # --- render ---
         screen.fill(C_BG)
 
-        if session.state == "CHARACTER_SELECT":
+        if session.state == "MODE_SELECT":
+            draw_mode_select(screen, font, mode_cursor)
+        elif session.state == "CHARACTER_SELECT":
             draw_char_select(screen, font, characters, assets, char_cursor, char_ids)
         elif session.state == "STARTER_SELECT":
             draw_starter_select(screen, font, characters, selected_char, assets, session.rom, starter_cursor)
@@ -1032,9 +1183,11 @@ def main():
         elif session.state == "EXPLORING":
             draw_map(screen, session, assets, camera)
             draw_npcs(screen, session, assets, camera)
+            draw_ai(screen, session, assets, camera)
             draw_player(screen, session, assets, camera, walker, surf_transition)
             draw_team_hud(screen, session, assets, font)
             draw_opponent_hud(screen, session, assets, font)
+            draw_timer(screen, font, getattr(session, "timer", 0))
             draw_hud_bar(screen, session, font)
             draw_rumor_hud(screen, font, collected_rumors)
             if show_inv:
