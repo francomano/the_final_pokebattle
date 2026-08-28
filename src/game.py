@@ -886,21 +886,34 @@ class GameSession:
             # tempo scaduto -> teletrasporto entrambi al centro e battaglia
             return self._trigger_center_battle("time_up")
 
+        # helper: dentro arena?
+        def _in_arena(map_key, x, y):
+            if map_key != self.CENTER_MAP:
+                return False
+            b = self.map_data[map_key].get("arena_bounds")
+            if not b: return (x, y) == self.CENTER_POS
+            return b["x1"] <= x <= b["x2"] and b["y1"] <= y <= b["y2"]
+
         # IA Blue: si muove verso il centro
         self.ai_tick += 1
         if self.ai_tick >= self.ai_speed:
             self.ai_tick = 0
             self._ai_step_towards_center()
-            # controlla se IA ha raggiunto il centro
-            if self.ai_map_key == self.CENTER_MAP and (self.ai_x, self.ai_y) == self.CENTER_POS:
+            # controlla se IA ha raggiunto l'arena
+            if _in_arena(self.ai_map_key, self.ai_x, self.ai_y):
                 return self._trigger_center_battle("ai_reached")
-            # controlla se player ha raggiunto il centro (anche se IA non si è mossa)
-            if self.current_map_key == self.CENTER_MAP and (self.player.x, self.player.y) == self.CENTER_POS:
+            # controlla se player ha raggiunto l'arena
+            if _in_arena(self.current_map_key, self.player.x, self.player.y):
                 return self._trigger_center_battle("player_reached")
         else:
-            # check player center anche senza IA step (per reattività)
-            if self.current_map_key == self.CENTER_MAP and (self.player.x, self.player.y) == self.CENTER_POS:
+            # check player arena anche senza IA step (per reattività)
+            if _in_arena(self.current_map_key, self.player.x, self.player.y):
                 return self._trigger_center_battle("player_reached")
+            # se IA era già in arena all'avvio del frame, triggera comunque
+            if _in_arena(self.ai_map_key, self.ai_x, self.ai_y) and self.current_map_key == self.CENTER_MAP:
+                # se IA è già lì e player entra nella mappa centrale, triggera quando player è vicino
+                if abs(self.player.x - self.ai_x) <= 5 and abs(self.player.y - self.ai_y) <= 5:
+                    return self._trigger_center_battle("ai_waiting")
         return None
 
     def _trigger_center_battle(self, reason):
