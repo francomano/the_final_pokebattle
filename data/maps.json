@@ -543,14 +543,6 @@
     "npcs": [
       {
         "x": 10,
-        "y": 5,
-        "name": "Rival",
-        "sprite": "npc_rival",
-        "dialogue": "Ready to battle? I won't hold back!",
-        "battle": true
-      },
-      {
-        "x": 10,
         "y": 2,
         "name": "Boy",
         "sprite": "npc_boy",
@@ -558,7 +550,36 @@
       }
     ],
     "signs": [],
-    "portals": [],
+    "portals": [
+      {
+        "x": 8,
+        "y": 0,
+        "dest_map": "forest_north",
+        "dest_x": 13,
+        "dest_y": 20
+      },
+      {
+        "x": 9,
+        "y": 0,
+        "dest_map": "forest_north",
+        "dest_x": 14,
+        "dest_y": 20
+      },
+      {
+        "x": 10,
+        "y": 0,
+        "dest_map": "forest_north",
+        "dest_x": 15,
+        "dest_y": 20
+      },
+      {
+        "x": 11,
+        "y": 0,
+        "dest_map": "forest_north",
+        "dest_x": 16,
+        "dest_y": 20
+      }
+    ],
     "encounter_rate": 0,
     "encounters": [],
     "walkable_tiles": [

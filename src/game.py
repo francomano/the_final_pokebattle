@@ -272,12 +272,11 @@ class OpponentState:
         self.character_id = character_id
         self.starter_species = starter_species
         self.team = []  # built during game
-        # Build opponent team
-        self.team.append(make_creature_from_rom(starter_species, 8, rom))
-        # Opponent also catches some creatures
-        opponent_catches = [41, 23, 58]  # random species for opponent
-        for sp in opponent_catches:
-            self.team.append(make_creature_from_rom(sp, 7, rom))
+        # Blue starts with only the starter and builds the team during the run.
+        starter = make_creature_from_rom(starter_species, 8, rom)
+        starter.teach_hm("cut")
+        starter.teach_hm("surf")
+        self.team.append(starter)
         # What the player knows
         self.known_starter = False
         self.known_items = False
@@ -382,6 +381,11 @@ class GameSession:
         self.ai_speed = 18  # frames per tile (più lento del player)
         self.ai_log = []  # per indizi dinamici: cosa ha fatto Blue
         self.ai_level_timer = 0  # per level up periodico
+        self.ai_route = "north"
+        self.ai_has_cut = False
+        self.ai_has_surf = False
+        self.ai_waypoints = []
+        self.ai_waypoint_index = 0
 
     def load_data(self, rom_path=None):
         if rom_path is None:
@@ -423,9 +427,32 @@ class GameSession:
         other_map = "forest_north" if self.current_map_key == "forest_south" else "forest_south"
         self.ai_map_key = other_map
         sp_ai = self.map_data[self.ai_map_key]["spawn"]
-        # leggera randomizzazione spawn per rendere ogni partita diversa
-        self.ai_x = max(1, min(sp_ai[0] + self.rng.randint(-2, 2), self.map_data[self.ai_map_key]["width"]-2))
-        self.ai_y = max(1, min(sp_ai[1] + self.rng.randint(-2, 2), self.map_data[self.ai_map_key]["height"]-2))
+        self.ai_x = sp_ai[0]
+        self.ai_y = sp_ai[1]
+        self.ai_route = "north" if self.ai_map_key == "forest_north" else "south"
+        self.ai_has_cut = True
+        self.ai_has_surf = True
+        if self.ai_route == "north":
+            self.ai_waypoints = [
+                ("forest_north", 14, 10),
+                ("forest_north", 6, 4),
+                ("forest_north", 22, 4),
+                ("forest_north", 14, 18),
+                ("forest_north", 14, 20),
+                ("area_central", 10, 1),
+                ("area_central", 2, 2),
+            ]
+        else:
+            self.ai_waypoints = [
+                ("forest_south", 14, 10),
+                ("forest_south", 10, 8),
+                ("forest_south", 20, 8),
+                ("river_area", 14, 0),
+                ("river_area", 5, 5),
+                ("area_central", 10, 12),
+                ("area_central", 10, 8),
+            ]
+        self.ai_waypoint_index = 0
         self.ai_direction = "down"
         self.ai_tick = 0
         self.ai_log = [f"Blue è partito da {self.map_data[self.ai_map_key]['name']}"]
@@ -760,8 +787,8 @@ class GameSession:
                     return result
                 # Se NPC è marcato dynamic, dai indizio su Blue (ogni partita diversa)
                 base_dial = npc["dialogue"]
-                if npc.get("dynamic") or self.rng.random() < 0.4:
-                    # 40% dialoghi diventano dinamici per variare ogni partita
+                if (npc.get("dynamic") or npc.get("is_rumor")
+                    or npc.get("name") != "Fisher"):
                     clue = self.get_ai_clue()
                     base_dial = f"{base_dial} [Indizio: {clue}]"
                 result = {"npc": True, "dialogue": base_dial, "name": npc["name"]}
@@ -802,6 +829,8 @@ class GameSession:
                 result = {"sign": True, "text": sign["text"]}
                 if sign.get("reveal"):
                     result["reveal"] = sign["reveal"]
+                if sign.get("is_rumor"):
+                    result["text"] = f"{result['text']} [Indizio: {self.get_ai_clue()}]"
                 return result
 
         return {"nothing": True}
@@ -948,6 +977,18 @@ class GameSession:
         if not (0 <= y < len(layout) and 0 <= x < len(layout[0])):
             return False
         ch = layout[y][x]
+        if map_key == self.CENTER_MAP:
+            bounds = self.map_data[map_key].get("arena_bounds", {})
+            if (bounds.get("x1", 0) <= x <= bounds.get("x2", -1)
+                    and bounds.get("y1", 0) <= y <= bounds.get("y2", -1)):
+                return True
+        if any(portal["x"] == x and portal["y"] == y
+               for portal in self.map_data[map_key].get("portals", [])):
+            return True
+        if ch == 'C':
+            return self.ai_has_cut
+        if ch in ('w', 'B'):
+            return self.ai_has_surf
         # IA ignora blocchi Cut/Water come se avesse HM
         if ch in ('T', 'M', 'G', 'W', 'N', 'F', 'H', '[', ']', '^', '~', '`', 'E', 'A'):
             # T = albero è bloccante per IA (non taglia) -> evita, ma se necessario passa
@@ -975,6 +1016,9 @@ class GameSession:
                 elif nx >= w: direction="east"
                 dest_key = edges.get(direction)
                 if dest_key and dest_key in self.map_data:
+                    if (self.ai_route == "north" and not self.ai_has_cut
+                            and dest_key == self.CENTER_MAP):
+                        continue
                     dest_layout = self.map_data[dest_key]["layout"]
                     # landing come in _edge_landing: nearest walkable col/row
                     # semplificato: spawn nearest
@@ -1029,6 +1073,10 @@ class GameSession:
                 # portal -> teletrasporto diretto
                 for portal in data.get("portals", []):
                     if portal["x"]==nx and portal["y"]==ny:
+                        if (self.ai_route == "north" and not self.ai_has_cut
+                                and portal["dest_map"] == self.CENTER_MAP):
+                            blocked = True
+                            break
                         res.append((portal["dest_map"], portal["dest_x"], portal["dest_y"]))
                         blocked=True; break
                 if blocked: continue
@@ -1040,41 +1088,34 @@ class GameSession:
         """Dopo aver mosso Blue, simula gioco: encounters, catture, log per indizi dinamici."""
         # ogni tanto level up
         self.ai_level_timer += 1
-        if self.ai_level_timer >= 600:  # ~10s
+        if self.ai_level_timer >= 1200:  # ~20s at the default AI speed
             self.ai_level_timer = 0
             for c in self.opponent.team:
-                if self.rng.random() < 0.3:
-                    c.level = min(20, c.level + 1)
-                    c.max_hp = c._calc_hp(); c.hp = min(c.hp+2, c.max_hp)
+                c.level = min(20, c.level + 1)
+                c.max_hp = c._calc_hp(); c.hp = min(c.hp+2, c.max_hp)
             self.ai_log.append(f"Blue si è allenato, ora Lv{max(c.level for c in self.opponent.team)}")
             if len(self.ai_log) > 12: self.ai_log.pop(0)
         # check tall grass encounter
         try:
             layout = self.map_data[self.ai_map_key]["layout"]
             ch = layout[self.ai_y][self.ai_x] if 0 <= self.ai_y < len(layout) and 0 <= self.ai_x < len(layout[0]) else '.'
-            if ch == 'g':
-                # 20% chance di incontro
-                if self.rng.random() < 0.25:
-                    wild_table = self.map_data[self.ai_map_key].get("wild_creatures", [])
-                    if wild_table and len(self.opponent.team) < 6 and self.rng.random() < 0.4:
-                        entry = self.rng.choice(wild_table)
-                        lvl = self.rng.randint(entry["min_level"], entry["max_level"])
-                        wild = make_creature_from_rom(entry["species_id"], lvl, self.rom)
-                        self.opponent.team.append(wild)
-                        self.ai_log.append(f"Blue ha catturato {wild.name} Lv{lvl} in {self.map_data[self.ai_map_key]['name']}")
-                        if len(self.ai_log) > 12: self.ai_log.pop(0)
-                        # rivela info per indizi
-                        self.opponent.known_team_count = True
-                    else:
-                        # solo exp
-                        if self.opponent.team:
-                            c = self.rng.choice(self.opponent.team)
-                            old = c.level
-                            c.level = min(20, c.level + 1)
-                            c.max_hp = c._calc_hp()
-                            if c.level != old:
-                                self.ai_log.append(f"Il {c.name} di Blue è salito a Lv{c.level}")
-                                if len(self.ai_log) > 12: self.ai_log.pop(0)
+            if ch == 'g' and self.rng.random() < 0.10:
+                wild_table = self.map_data[self.ai_map_key].get("wild_creatures", [])
+                if wild_table and len(self.opponent.team) < 6:
+                    entry = self.rng.choice(wild_table)
+                    lvl = self.rng.randint(entry["min_level"], entry["max_level"])
+                    wild = make_creature_from_rom(entry["species_id"], lvl, self.rom)
+                    self.opponent.team.append(wild)
+                    self.ai_log.append(f"Blue ha catturato {wild.name} Lv{lvl} in {self.map_data[self.ai_map_key]['name']}")
+                    if len(self.ai_log) > 12: self.ai_log.pop(0)
+                    self.opponent.known_team_count = True
+                elif self.opponent.team:
+                    c = max(self.opponent.team, key=lambda creature: creature.level)
+                    c.level = min(20, c.level + 1)
+                    c.max_hp = c._calc_hp()
+                    c.hp = c.max_hp
+                    self.ai_log.append(f"Il {c.name} di Blue è salito a Lv{c.level}")
+                    if len(self.ai_log) > 12: self.ai_log.pop(0)
         except Exception:
             pass
 
@@ -1087,75 +1128,51 @@ class GameSession:
         return self.rng.choice(recent)
 
     def _ai_step_towards_center(self):
-        """Muove IA di un tile verso il centro con BFS + 15% random per variare ogni partita."""
-        # 15% random walk per rendere ogni partita diversa
-        if self.rng.random() < 0.15:
-            neigh = self._ai_neighbors(self.ai_map_key, self.ai_x, self.ai_y)
-            if neigh:
-                # evita di tornare indietro subito? scegli random
-                choice = self.rng.choice(neigh)
-                prev = (self.ai_map_key, self.ai_x, self.ai_y)
-                # aggiorna direzione
-                if choice[1] > self.ai_x: self.ai_direction="right"
-                elif choice[1] < self.ai_x: self.ai_direction="left"
-                elif choice[2] > self.ai_y: self.ai_direction="down"
-                elif choice[2] < self.ai_y: self.ai_direction="up"
-                self.ai_map_key, self.ai_x, self.ai_y = choice
-                self._ai_handle_post_move()
+        """Move Blue one step toward the current route waypoint."""
+        if not self.ai_waypoints:
             return
-        if self.ai_map_key == self.CENTER_MAP and (self.ai_x, self.ai_y) == self.CENTER_POS:
-            return
-        target = (self.CENTER_MAP, self.CENTER_POS[0], self.CENTER_POS[1])
-        start = (self.ai_map_key, self.ai_x, self.ai_y)
-        if start == target:
-            return
-        # BFS
+        current = (self.ai_map_key, self.ai_x, self.ai_y)
+        target = self.ai_waypoints[self.ai_waypoint_index]
+        if current == target:
+            self.ai_waypoint_index = (self.ai_waypoint_index + 1) % len(self.ai_waypoints)
+            target = self.ai_waypoints[self.ai_waypoint_index]
+            if current == target:
+                return
+
         from collections import deque
-        queue=deque([start])
-        prev={start: None}
-        visited=set([start])
-        found=None
-        # limita ricerca per performance
-        steps=0
-        while queue and steps < 2000:
-            cur=queue.popleft()
-            steps+=1
-            if cur==target:
-                found=cur; break
-            ck,cx,cy = cur
-            for nb in self._ai_neighbors(ck,cx,cy):
-                if nb not in visited:
-                    visited.add(nb)
-                    prev[nb]=cur
-                    queue.append(nb)
-        if target not in prev and found is None:
-            # nessun path: muovi random walkable
-            neigh=self._ai_neighbors(self.ai_map_key,self.ai_x,self.ai_y)
-            if neigh:
-                # preferisci quelli più vicini al target (euclideo su mappa center)
-                # scegli random tra vicini
-                choice=self.rng.choice(neigh)
-                self.ai_map_key, self.ai_x, self.ai_y = choice
-                # aggiorna direzione
-                if choice[1] > self.ai_x: self.ai_direction="right"
-                elif choice[1] < self.ai_x: self.ai_direction="left"
-                elif choice[2] > self.ai_y: self.ai_direction="down"
-                elif choice[2] < self.ai_y: self.ai_direction="up"
+        queue = deque([current])
+        previous = {current: None}
+        while queue and target not in previous:
+            position = queue.popleft()
+            for neighbor in self._ai_neighbors(*position):
+                if neighbor not in previous:
+                    previous[neighbor] = position
+                    queue.append(neighbor)
+
+        if target not in previous:
+            self.ai_log.append(f"Blue non trova il percorso verso {target[0]}")
             return
-        # ricostruisci path
-        path=[]
-        cur=target
-        while cur is not None and cur != start:
-            path.append(cur)
-            cur=prev.get(cur)
-        path.reverse()
-        if path:
-            nxt=path[0]
-            # aggiorna direzione
-            _, nx, ny = nxt
-            if nx > self.ai_x: self.ai_direction="right"
-            elif nx < self.ai_x: self.ai_direction="left"
-            elif ny > self.ai_y: self.ai_direction="down"
-            elif ny < self.ai_y: self.ai_direction="up"
-            self.ai_map_key, self.ai_x, self.ai_y = nxt
-            self._ai_handle_post_move()
+
+        path = []
+        next_position = target
+        while next_position != current:
+            path.append(next_position)
+            next_position = previous.get(next_position)
+            if next_position is None:
+                self.ai_log.append(f"Blue non trova il percorso verso {target[0]}")
+                return
+        next_position = path[-1]
+        _, next_x, next_y = next_position
+        if next_position[0] == self.ai_map_key:
+            if next_x > self.ai_x:
+                self.ai_direction = "right"
+            elif next_x < self.ai_x:
+                self.ai_direction = "left"
+            elif next_y > self.ai_y:
+                self.ai_direction = "down"
+            elif next_y < self.ai_y:
+                self.ai_direction = "up"
+            if self.map_data[self.ai_map_key]["layout"][next_y][next_x] == "C":
+                self.cut_tiles_removed.add((next_x, next_y))
+        self.ai_map_key, self.ai_x, self.ai_y = next_position
+        self._ai_handle_post_move()

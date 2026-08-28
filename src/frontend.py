@@ -441,6 +441,17 @@ def draw_ai(surface, session, assets, camera):
     assets.load_player(prefix)
     # usa direzione IA
     direction = getattr(session, "ai_direction", "down")
+    layout = session.map_data.get(session.ai_map_key, {}).get("layout", [])
+    tile = layout[session.ai_y][session.ai_x] if (
+        0 <= session.ai_y < len(layout)
+        and 0 <= session.ai_x < len(layout[session.ai_y])
+    ) else None
+    if getattr(session, "ai_has_surf", False) and tile in ("w", "B"):
+        surf_frame = assets.surf_frame(prefix, direction, mount=False)
+        if surf_frame:
+            sx, sy = camera.to_screen(session.ai_x * TILE_SIZE, session.ai_y * TILE_SIZE)
+            surface.blit(surf_frame, (sx, sy - TILE_SIZE))
+            return
     frame = assets.player_frame(prefix, direction, 0)
     if not frame:
         frame = assets.player_frame(prefix, "down", 0)
