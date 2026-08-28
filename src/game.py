@@ -380,6 +380,8 @@ class GameSession:
         self.ai_direction = "down"
         self.ai_tick = 0  # frames since last AI step
         self.ai_speed = 18  # frames per tile (più lento del player)
+        self.ai_log = []  # per indizi dinamici: cosa ha fatto Blue
+        self.ai_level_timer = 0  # per level up periodico
 
     def load_data(self, rom_path=None):
         if rom_path is None:
@@ -421,9 +423,16 @@ class GameSession:
         other_map = "forest_north" if self.current_map_key == "forest_south" else "forest_south"
         self.ai_map_key = other_map
         sp_ai = self.map_data[self.ai_map_key]["spawn"]
-        self.ai_x, self.ai_y = sp_ai[0], sp_ai[1]
+        # leggera randomizzazione spawn per rendere ogni partita diversa
+        self.ai_x = max(1, min(sp_ai[0] + self.rng.randint(-2, 2), self.map_data[self.ai_map_key]["width"]-2))
+        self.ai_y = max(1, min(sp_ai[1] + self.rng.randint(-2, 2), self.map_data[self.ai_map_key]["height"]-2))
         self.ai_direction = "down"
         self.ai_tick = 0
+        self.ai_log = [f"Blue è partito da {self.map_data[self.ai_map_key]['name']}"]
+        self.ai_level_timer = 0
+        # log iniziale team
+        if self.opponent.team:
+            self.ai_log.append(f"Blue ha {len(self.opponent.team)} creature, la più forte è Lv{max(c.level for c in self.opponent.team)}")
 
         self.state = "EXPLORING"
 
@@ -749,7 +758,13 @@ class GameSession:
                     result["dialogue"] = npc.get("dialogue", "Let's battle!")
                     result["name"] = npc.get("name", "Rival")
                     return result
-                result = {"npc": True, "dialogue": npc["dialogue"], "name": npc["name"]}
+                # Se NPC è marcato dynamic, dai indizio su Blue (ogni partita diversa)
+                base_dial = npc["dialogue"]
+                if npc.get("dynamic") or self.rng.random() < 0.4:
+                    # 40% dialoghi diventano dinamici per variare ogni partita
+                    clue = self.get_ai_clue()
+                    base_dial = f"{base_dial} [Indizio: {clue}]"
+                result = {"npc": True, "dialogue": base_dial, "name": npc["name"]}
                 # Give item if applicable
                 npc_id = f"{npc['x']}_{npc['y']}"
                 if npc_id not in self.npc_gifts_given:
@@ -1021,8 +1036,73 @@ class GameSession:
         # portal da posizione attuale (se IA è su portal tile, può entrare anche senza muoversi? gestito sopra)
         return res
 
+    def _ai_handle_post_move(self):
+        """Dopo aver mosso Blue, simula gioco: encounters, catture, log per indizi dinamici."""
+        # ogni tanto level up
+        self.ai_level_timer += 1
+        if self.ai_level_timer >= 600:  # ~10s
+            self.ai_level_timer = 0
+            for c in self.opponent.team:
+                if self.rng.random() < 0.3:
+                    c.level = min(20, c.level + 1)
+                    c.max_hp = c._calc_hp(); c.hp = min(c.hp+2, c.max_hp)
+            self.ai_log.append(f"Blue si è allenato, ora Lv{max(c.level for c in self.opponent.team)}")
+            if len(self.ai_log) > 12: self.ai_log.pop(0)
+        # check tall grass encounter
+        try:
+            layout = self.map_data[self.ai_map_key]["layout"]
+            ch = layout[self.ai_y][self.ai_x] if 0 <= self.ai_y < len(layout) and 0 <= self.ai_x < len(layout[0]) else '.'
+            if ch == 'g':
+                # 20% chance di incontro
+                if self.rng.random() < 0.25:
+                    wild_table = self.map_data[self.ai_map_key].get("wild_creatures", [])
+                    if wild_table and len(self.opponent.team) < 6 and self.rng.random() < 0.4:
+                        entry = self.rng.choice(wild_table)
+                        lvl = self.rng.randint(entry["min_level"], entry["max_level"])
+                        wild = make_creature_from_rom(entry["species_id"], lvl, self.rom)
+                        self.opponent.team.append(wild)
+                        self.ai_log.append(f"Blue ha catturato {wild.name} Lv{lvl} in {self.map_data[self.ai_map_key]['name']}")
+                        if len(self.ai_log) > 12: self.ai_log.pop(0)
+                        # rivela info per indizi
+                        self.opponent.known_team_count = True
+                    else:
+                        # solo exp
+                        if self.opponent.team:
+                            c = self.rng.choice(self.opponent.team)
+                            old = c.level
+                            c.level = min(20, c.level + 1)
+                            c.max_hp = c._calc_hp()
+                            if c.level != old:
+                                self.ai_log.append(f"Il {c.name} di Blue è salito a Lv{c.level}")
+                                if len(self.ai_log) > 12: self.ai_log.pop(0)
+        except Exception:
+            pass
+
+    def get_ai_clue(self):
+        """Ritorna un indizio dinamico basato su cosa ha fatto Blue (ogni partita diversa)."""
+        if not self.ai_log:
+            return "Blue si sta muovendo verso il centro..."
+        # preferisci ultimi 3 log, pick random per variabilità
+        recent = self.ai_log[-3:]
+        return self.rng.choice(recent)
+
     def _ai_step_towards_center(self):
-        """Muove IA di un tile verso il centro con BFS."""
+        """Muove IA di un tile verso il centro con BFS + 15% random per variare ogni partita."""
+        # 15% random walk per rendere ogni partita diversa
+        if self.rng.random() < 0.15:
+            neigh = self._ai_neighbors(self.ai_map_key, self.ai_x, self.ai_y)
+            if neigh:
+                # evita di tornare indietro subito? scegli random
+                choice = self.rng.choice(neigh)
+                prev = (self.ai_map_key, self.ai_x, self.ai_y)
+                # aggiorna direzione
+                if choice[1] > self.ai_x: self.ai_direction="right"
+                elif choice[1] < self.ai_x: self.ai_direction="left"
+                elif choice[2] > self.ai_y: self.ai_direction="down"
+                elif choice[2] < self.ai_y: self.ai_direction="up"
+                self.ai_map_key, self.ai_x, self.ai_y = choice
+                self._ai_handle_post_move()
+            return
         if self.ai_map_key == self.CENTER_MAP and (self.ai_x, self.ai_y) == self.CENTER_POS:
             return
         target = (self.CENTER_MAP, self.CENTER_POS[0], self.CENTER_POS[1])
@@ -1078,3 +1158,4 @@ class GameSession:
             elif ny > self.ai_y: self.ai_direction="down"
             elif ny < self.ai_y: self.ai_direction="up"
             self.ai_map_key, self.ai_x, self.ai_y = nxt
+            self._ai_handle_post_move()

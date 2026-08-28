@@ -56,9 +56,9 @@ The full design lives in [`idea.txt`](idea.txt). This README describes the **off
 
 A single-player practice mode mirroring the online rules:
 
-- **Static clue signs** — signs hold fixed clues on the map (e.g. where a rare creature is).
-- **Dynamic NPC dialogue** — NPCs change their dialogues/suggestions based on world state.
-- **Final trigger** — reach the **central area** and stand on a specific spot to start the final challenge.
+- **Campagna 3 min + IA** — timer 180s, Blue si muove (BFS + 15% random) verso il centro, gioca (incontri in erba alta, catture, level-up) e aggiorna la squadra; ogni partita è diversa per seed/spawn/path.
+- **Indizi dinamici** — parlando con NPC ottieni [Indizio: ...] generato dalle azioni recenti di Blue (team, livello, zona); i segni statici restano fissi.
+- **Final trigger** — raggiunta l'arena centrale il rivale in attesa viene teletrasportato e la battaglia finale parte automaticamente (vale anche se Blue è arrivato prima); allo scadere dei 3 min parte comunque.
 
 ---
 
