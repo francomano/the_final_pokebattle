@@ -547,6 +547,14 @@
         "name": "Boy",
         "sprite": "npc_boy",
         "dialogue": "Final arena ahead! The rival awaits your challenge!"
+      },
+      {
+        "x": 2,
+        "y": 2,
+        "name": "Fisher",
+        "sprite": "npc_fisher",
+        "dialogue": "This island has great fishing spots! Take this Old Rod and HM SURF!",
+        "gives": "old_rod_and_surf"
       }
     ],
     "signs": [],

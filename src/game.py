@@ -804,6 +804,9 @@ class GameSession:
                             self.player.inventory.add_key_item("old_rod")
                             self.player.inventory.obtain_hm("surf")
                             result["received"] = "Old Rod & HM SURF"
+                        elif gift == "potion_x3":
+                            self.player.inventory.add_item("potion", 3)
+                            result["received"] = "3 Potions"
                         elif gift == "hm_cut":
                             self.player.inventory.obtain_hm("cut")
                             active = self.player.active_creature()
@@ -1088,7 +1091,7 @@ class GameSession:
         """Dopo aver mosso Blue, simula gioco: encounters, catture, log per indizi dinamici."""
         # ogni tanto level up
         self.ai_level_timer += 1
-        if self.ai_level_timer >= 1200:  # ~20s at the default AI speed
+        if self.ai_level_timer >= 2400:  # ~40s at the default AI speed
             self.ai_level_timer = 0
             for c in self.opponent.team:
                 c.level = min(20, c.level + 1)
@@ -1099,7 +1102,7 @@ class GameSession:
         try:
             layout = self.map_data[self.ai_map_key]["layout"]
             ch = layout[self.ai_y][self.ai_x] if 0 <= self.ai_y < len(layout) and 0 <= self.ai_x < len(layout[0]) else '.'
-            if ch == 'g' and self.rng.random() < 0.10:
+            if ch == 'g' and self.rng.random() < 0.05:
                 wild_table = self.map_data[self.ai_map_key].get("wild_creatures", [])
                 if wild_table and len(self.opponent.team) < 6:
                     entry = self.rng.choice(wild_table)
@@ -1109,7 +1112,7 @@ class GameSession:
                     self.ai_log.append(f"Blue ha catturato {wild.name} Lv{lvl} in {self.map_data[self.ai_map_key]['name']}")
                     if len(self.ai_log) > 12: self.ai_log.pop(0)
                     self.opponent.known_team_count = True
-                elif self.opponent.team:
+                elif self.opponent.team and self.rng.random() < 0.05:
                     c = max(self.opponent.team, key=lambda creature: creature.level)
                     c.level = min(20, c.level + 1)
                     c.max_hp = c._calc_hp()
