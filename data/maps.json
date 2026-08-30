@@ -7,7 +7,7 @@
       14,
       10
     ],
-    "background": "custom_map_1_forest/forest_south_rendered.png",
+    "background": "forest/forest_south_rendered.png",
     "layout": [
       "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
       "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
@@ -128,7 +128,7 @@
     "name": "River Crossing",
     "width": 30,
     "height": 15,
-    "background": "custom_map_1_forest/river_area_rendered.png",
+    "background": "forest/river_area_rendered.png",
     "layout": [
       "............Ndddd.............",
       "..ggggggg.....dd......^~~~`...",
@@ -202,7 +202,7 @@
       {
         "x": 24,
         "y": 4,
-        "dest_map": "house_interior",
+        "dest_map": "house_river",
         "dest_x": 4,
         "dest_y": 5
       },
@@ -270,7 +270,7 @@
       14,
       10
     ],
-    "background": "custom_map_1_forest/forest_north_rendered.png",
+    "background": "forest/forest_north_rendered.png",
     "layout": [
       "TTTTTTTTT............TTTTTTTTT",
       "TTTTTTTTT.N..MMM.....TTTTTTTTT",
@@ -549,15 +549,21 @@
         "dialogue": "Final arena ahead! The rival awaits your challenge!"
       },
       {
-        "x": 2,
+        "x": 5,
         "y": 2,
         "name": "Fisher",
         "sprite": "npc_fisher",
-        "dialogue": "This island has great fishing spots! Take this Old Rod and HM SURF!",
+        "dialogue": "Great fishing here! Take this Old Rod and HM SURF!",
         "gives": "old_rod_and_surf"
       }
     ],
-    "signs": [],
+    "signs": [
+      {
+        "x": 4,
+        "y": 8,
+        "text": "A path leads back to the river. You can return to the forest from there."
+      }
+    ],
     "portals": [
       {
         "x": 8,
@@ -586,6 +592,13 @@
         "dest_map": "forest_north",
         "dest_x": 16,
         "dest_y": 20
+      },
+      {
+        "x": 3,
+        "y": 8,
+        "dest_map": "river_area",
+        "dest_x": 14,
+        "dest_y": 5
       }
     ],
     "encounter_rate": 0,
@@ -596,7 +609,7 @@
       "D",
       "A"
     ],
-    "background": "custom_map_1_forest/area_central_rendered.png",
+    "background": "forest/area_central_rendered.png",
     "fishing_creatures": [
       {
         "species_id": 129,
@@ -624,7 +637,7 @@
     "name": "Mystery Cave",
     "width": 14,
     "height": 10,
-    "background": "custom_map_1_forest/cave_interior_rendered.png",
+    "background": "forest/cave_interior_rendered.png",
     "layout": [
       "TEEETTTTTTTTTT",
       "TddddddddddddT",
@@ -691,10 +704,49 @@
     ]
   },
   "house_interior": {
-    "name": "House",
+    "name": "Forest House",
     "width": 9,
     "height": 7,
-    "background": "custom_map_1_forest/house_interior_rendered.png",
+    "background": "forest/house_interior_rendered.png",
+    "layout": [
+      "TTTTTTTTT",
+      "T.......T",
+      "T...I...T",
+      "T.......T",
+      "T.......T",
+      "T.......T",
+      "T...D...T"
+    ],
+    "portals": [],
+    "npcs": [],
+    "items": [
+      {
+        "x": 4,
+        "y": 2,
+        "item": "pokeball",
+        "name": "Poké Ball"
+      }
+    ],
+    "items_on_talk": [],
+    "walkable_tiles": [
+      "D",
+      "I",
+      "i",
+      "d",
+      "W",
+      "f",
+      "."
+    ],
+    "dynamic_exit": {
+      "x": 4,
+      "y": 6
+    }
+  },
+  "house_river": {
+    "name": "Ranger Hut",
+    "width": 9,
+    "height": 7,
+    "background": "forest/house_interior_rendered.png",
     "layout": [
       "TTTTTTTTT",
       "T.......T",
@@ -711,16 +763,12 @@
         "y": 2,
         "name": "Fisher",
         "sprite": "npc_fisher",
-        "dialogue": "Take this Old Rod and HM SURF! Fish a water pokemon, teach it Surf, and cross the river to reach the arena!",
+        "dialogue": "Nice fishing spot out there! Take this Old Rod and HM SURF!",
         "gives": "old_rod_and_surf"
       }
     ],
-    "items_on_talk": [
-      {
-        "npc": "Fisher",
-        "item": "old_rod"
-      }
-    ],
+    "items": [],
+    "items_on_talk": [],
     "walkable_tiles": [
       "D",
       "i",
@@ -733,5 +781,522 @@
       "x": 4,
       "y": 6
     }
+  },
+  "rock_desert": {
+    "name": "Rock Desert",
+    "width": 30,
+    "height": 22,
+    "spawn": [
+      22,
+      17
+    ],
+    "spawn_shelter": [
+      1,
+      20
+    ],
+    "spawn_desert": [
+      22,
+      17
+    ],
+    "background": "rocky_desert/rock_desert_rendered.png",
+    "layout": [
+      "MMMMMMMMMMMMMMMMMMMMMMMMMMMMMM",
+      "MMMMMMMMMMMMMMMMMMMMMMMMMMMMMM",
+      "MMMMMMMMMMMMMMKMMMMMMMMMMMMMMM",
+      "MMMMMMMMMMMMMOOOMMMMMMMMMMMMMM",
+      "MMMMMMMMMMMMMdddMMMMMMMMMMMMMM",
+      "MMMMMMMMMMMzdRRRzdzMMMMMMMMMMM",
+      "MMMMMMMMMMMzdRRRzdzMMMMMMMMMMM",
+      "MMMMMMMMMMMzddddddzMMMMMMMMMMM",
+      "MMMMMMMMMMMzdRRRzdzMMMMMMMMMMM",
+      "MMMMMMMMMMMzdRRRzdzMMMMMMMMMMM",
+      "MMMMMMMMMMMzddddddzMMMMMMMMMMM",
+      "MMMMMFFFFFFFAFAFAFFFFFFFFMMMMM",
+      "MMMMMFAAAAAAAAAAAAAAAAAAFMMMMM",
+      "MMMMMFAAAAAAAAAAAAAAAAAAFMMMMM",
+      "MMMMMFFFFFFFFFAFFFFFFFFFFMMMMM",
+      "MMzzzzzzzzzzzzdzzzzzzzzdMMMMMM",
+      "MMzzgggzzzzzzzzRzzzzzzzdMMMMMM",
+      "MMzzgggzzzzzzzzRzzzzzzzRMMMMMM",
+      "MMzzzzzzzzzzzzzzzzzzRzzdMMMMMM",
+      "MMzzzzzzgggzzzzzzzzzzzzdMMMMMM",
+      "MdzzzzzzgggzzzzzzzzzzzzzMMMMMM",
+      "MddddMMMMMMMMMMMMMMMMMMMMMMMMM"
+    ],
+    "encounter_tiles": [
+      "z"
+    ],
+    "encounter_rate": 10,
+    "arena_bounds": {
+      "x1": 5,
+      "y1": 11,
+      "x2": 24,
+      "y2": 14
+    },
+    "breakable_rocks": [
+      {
+        "x": 13,
+        "y": 5,
+        "requires": "rock_smash"
+      },
+      {
+        "x": 14,
+        "y": 5,
+        "requires": "rock_smash"
+      },
+      {
+        "x": 15,
+        "y": 5,
+        "requires": "rock_smash"
+      },
+      {
+        "x": 13,
+        "y": 6,
+        "requires": "rock_smash"
+      },
+      {
+        "x": 14,
+        "y": 6,
+        "requires": "rock_smash"
+      },
+      {
+        "x": 15,
+        "y": 6,
+        "requires": "rock_smash"
+      },
+      {
+        "x": 13,
+        "y": 8,
+        "requires": "rock_smash"
+      },
+      {
+        "x": 14,
+        "y": 8,
+        "requires": "rock_smash"
+      },
+      {
+        "x": 15,
+        "y": 8,
+        "requires": "rock_smash"
+      },
+      {
+        "x": 13,
+        "y": 9,
+        "requires": "rock_smash"
+      },
+      {
+        "x": 14,
+        "y": 9,
+        "requires": "rock_smash"
+      },
+      {
+        "x": 15,
+        "y": 9,
+        "requires": "rock_smash"
+      }
+    ],
+    "npcs": [
+      {
+        "x": 8,
+        "y": 16,
+        "name": "Desert Explorer",
+        "sprite": "npc_oldman",
+        "dialogue": "Spaccaroccia! You need it to break rocks...",
+        "gift": "rock_smash"
+      },
+      {
+        "x": 14,
+        "y": 19,
+        "name": "Guide",
+        "sprite": "npc_hiker",
+        "dialogue": "The arena is north. A path leads to the shelter..."
+      }
+    ],
+    "items": [
+      {
+        "x": 15,
+        "y": 19,
+        "item": "potion",
+        "name": "Potion"
+      },
+      {
+        "x": 6,
+        "y": 17,
+        "item": "pokeball",
+        "name": "Pokeball"
+      }
+    ],
+    "signs": [],
+    "wild_creatures": [
+      {
+        "species_id": 27,
+        "min_level": 7,
+        "max_level": 11,
+        "zone": "all"
+      },
+      {
+        "species_id": 50,
+        "min_level": 6,
+        "max_level": 10,
+        "zone": "all"
+      },
+      {
+        "species_id": 104,
+        "min_level": 9,
+        "max_level": 13,
+        "zone": "all"
+      }
+    ],
+    "walkable_tiles": [
+      "z",
+      "d",
+      "D",
+      "N",
+      "s",
+      "S",
+      "A",
+      "F",
+      "f",
+      "g",
+      "K",
+      "O"
+    ],
+    "portals": [
+      {
+        "x": 14,
+        "y": 2,
+        "dest_map": "rock_desert_cave",
+        "dest_x": 5,
+        "dest_y": 6
+      },
+      {
+        "x": 1,
+        "y": 21,
+        "dest_map": "rock_desert_arena",
+        "dest_x": 9,
+        "dest_y": 14
+      }
+    ]
+  },
+  "rock_desert_cave": {
+    "name": "Mountain Shelter",
+    "width": 12,
+    "height": 8,
+    "spawn": [
+      5,
+      5
+    ],
+    "background": "rocky_desert/rock_desert_cave_rendered.png",
+    "layout": [
+      "MMMMMMMMMMMM",
+      "MddddddddddM",
+      "MddddddddddM",
+      "MddddddddddM",
+      "MddddddddddM",
+      "MddddddddddM",
+      "MddddddddddM",
+      "MMMMMdMMMMMM"
+    ],
+    "encounter_tiles": [],
+    "encounter_rate": 0,
+    "walkable_tiles": [
+      ".",
+      "d",
+      "D",
+      "N"
+    ],
+    "npcs": [
+      {
+        "x": 5,
+        "y": 2,
+        "name": "Lance",
+        "sprite": "npc_lance",
+        "dialogue": "I am Lance, the Dragon Master. You've climbed to the peak! Take this Dratini!",
+        "gives": "dratini"
+      }
+    ],
+    "portals": [
+      {
+        "x": 5,
+        "y": 7,
+        "dest_map": "rock_desert",
+        "dest_x": 14,
+        "dest_y": 4
+      }
+    ]
+  },
+  "rock_desert_arena": {
+    "name": "Rock Arena",
+    "width": 20,
+    "height": 16,
+    "spawn": [
+      8,
+      5
+    ],
+    "background": "rocky_desert/rock_desert_arena_rendered.png",
+    "layout": [
+      "MMMMMMMMMMMMMMMMMMMM",
+      "MmddddddddddddddddmM",
+      "MmdddddddddddddddgmM",
+      "MmdzzRddddMddRRzdmmM",
+      "MmdzRRzzggMggzzRRzmM",
+      "MmddddddddMdddddddmM",
+      "MmddMFAAAAAAFMddddmM",
+      "MmddMFAAAAAAFMddddmM",
+      "MmddMFAAAAAAFMddddmM",
+      "MmddMFAAAAAAFMddddmM",
+      "MmddddddddMdddddddmM",
+      "MmdzRRzzggMggzzRRzmM",
+      "MmdzzRddddMddRRzdmmM",
+      "MmgdddddddMdddddddmM",
+      "MmddddddddddddddddmM",
+      "MMMMMMMMMMMMMMMMMMMM"
+    ],
+    "encounter_tiles": [
+      "z",
+      "g"
+    ],
+    "encounter_rate": 10,
+    "arena_bounds": {
+      "x1": 6,
+      "y1": 6,
+      "x2": 11,
+      "y2": 9
+    },
+    "breakable_rocks": [
+      {
+        "x": 5,
+        "y": 3,
+        "requires": "rock_smash"
+      },
+      {
+        "x": 13,
+        "y": 3,
+        "requires": "rock_smash"
+      },
+      {
+        "x": 14,
+        "y": 3,
+        "requires": "rock_smash"
+      },
+      {
+        "x": 4,
+        "y": 4,
+        "requires": "rock_smash"
+      },
+      {
+        "x": 5,
+        "y": 4,
+        "requires": "rock_smash"
+      },
+      {
+        "x": 14,
+        "y": 4,
+        "requires": "rock_smash"
+      },
+      {
+        "x": 15,
+        "y": 4,
+        "requires": "rock_smash"
+      }
+    ],
+    "npcs": [
+      {
+        "x": 8,
+        "y": 7,
+        "name": "Arena Guard",
+        "sprite": "npc_hiker",
+        "dialogue": "Welcome to the Rock Arena!"
+      }
+    ],
+    "items": [
+      {
+        "x": 15,
+        "y": 11,
+        "item": "potion",
+        "name": "Potion"
+      }
+    ],
+    "signs": [],
+    "wild_creatures": [
+      {
+        "species_id": 104,
+        "min_level": 18,
+        "max_level": 24,
+        "zone": "all"
+      },
+      {
+        "species_id": 95,
+        "min_level": 20,
+        "max_level": 26,
+        "zone": "all"
+      },
+      {
+        "species_id": 111,
+        "min_level": 20,
+        "max_level": 25,
+        "zone": "all"
+      },
+      {
+        "species_id": 74,
+        "min_level": 22,
+        "max_level": 28,
+        "zone": "all"
+      },
+      {
+        "species_id": 112,
+        "min_level": 25,
+        "max_level": 30,
+        "zone": "all"
+      }
+    ],
+    "walkable_tiles": [
+      "z",
+      "d",
+      "D",
+      "N",
+      "s",
+      "S",
+      "A",
+      "F",
+      "f",
+      "g"
+    ],
+    "portals": [
+      {
+        "x": 17,
+        "y": 2,
+        "dest_map": "rock_desert",
+        "dest_x": 1,
+        "dest_y": 20
+      },
+      {
+        "x": 2,
+        "y": 13,
+        "dest_map": "rock_desert_shelter",
+        "dest_x": 17,
+        "dest_y": 14
+      }
+    ]
+  },
+  "rock_desert_shelter": {
+    "name": "Desert Shelter",
+    "width": 20,
+    "height": 16,
+    "spawn": [
+      6,
+      13
+    ],
+    "background": "rocky_desert/rock_desert_shelter_rendered.png",
+    "layout": [
+      "MMMMMMMMMMMMMMMMMMMM",
+      "Mmh^~~~^jdmmmmmmmmmM",
+      "MmhooIoojdmmmmmmmmmM",
+      "MmhDoooDjddmmmmmmmmM",
+      "Mmh^^^^^jdddmmmmmmmM",
+      "MmmmmdddddmmmmmmmmmM",
+      "MmmmddddmmmmmmmmmmmM",
+      "MmmmdddmmmmmmmmmmmmM",
+      "MmmmdddmmmmmmmmmmmmM",
+      "MmmmddbmmmmmmmmmmmmM",
+      "MmmmdddmmmmmmmmmmmmM",
+      "MmmmddddmmmmmmmmmmmM",
+      "MmmdddddddddddddddmM",
+      "MmddddddddddddddddmM",
+      "MmddddddddddddddddmM",
+      "MMMMMMMMMMMMMMMMMMMM"
+    ],
+    "encounter_tiles": [
+      "g"
+    ],
+    "encounter_rate": 8,
+    "breakable_rocks": [],
+    "boulders": [
+      {
+        "x": 10,
+        "y": 5,
+        "pushable": true,
+        "requires": "strength",
+        "pushes_to": {
+          "x": 10,
+          "y": 6
+        }
+      }
+    ],
+    "npcs": [
+      {
+        "x": 5,
+        "y": 2,
+        "name": "Blaine",
+        "sprite": "npc_scientist",
+        "dialogue": "I used to run the Cinnabar Gym. Take this Pokemon!",
+        "gift": "dratini"
+      },
+      {
+        "x": 5,
+        "y": 11,
+        "name": "Strength Guru",
+        "sprite": "npc_hiker",
+        "dialogue": "You look strong! Take this HM!",
+        "gift": "strength"
+      }
+    ],
+    "items": [
+      {
+        "x": 5,
+        "y": 9,
+        "item": "rare_candy",
+        "quantity": 2
+      }
+    ],
+    "signs": [],
+    "wild_creatures": [
+      {
+        "species_id": 43,
+        "min_level": 14,
+        "max_level": 18,
+        "zone": "all"
+      },
+      {
+        "species_id": 69,
+        "min_level": 14,
+        "max_level": 18,
+        "zone": "all"
+      },
+      {
+        "species_id": 13,
+        "min_level": 12,
+        "max_level": 16,
+        "zone": "all"
+      }
+    ],
+    "walkable_tiles": [
+      "d",
+      "D",
+      "N",
+      "S",
+      "s",
+      "g",
+      "z",
+      "A",
+      "o",
+      "O"
+    ],
+    "portals": [
+      {
+        "x": 17,
+        "y": 14,
+        "dest_map": "rock_desert_arena",
+        "dest_x": 2,
+        "dest_y": 13
+      }
+    ],
+    "breakable_boulders": [
+      {
+        "x": 8,
+        "y": 11,
+        "requires": "strength"
+      }
+    ]
   }
 }

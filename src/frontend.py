@@ -55,32 +55,37 @@ TILE_COLORS = {
 
 # Tile char -> asset filename
 TILE_FILES = {
-    ".": "tile_grass.png",          # base grass (walkable)
-    "g": "tile_tall_grass.png",     # tall grass (encounters)
-    "d": "tile_path.png",           # dirt path (walkable)
-    "p": "tile_path2.png",          # stone path (walkable)
-    "s": "tile_path.png",           # spawn point 1
-    "S": "tile_path.png",           # spawn point 2
-    "1": "tile_tree_tl.png",        # tree top-left
-    "2": "tile_tree_tr.png",        # tree top-right
-    "3": "tile_tree_bl.png",        # tree bottom-left
-    "4": "tile_tree_br.png",        # tree bottom-right
-    "T": "tile_tree_thin.png",      # thin tree (single tile)
-    "C": "tile_cut_tree.png",       # cuttable tree
-    "I": "tile_item.png",           # ground item (pokeball)
-    "F": "tile_fence.png",          # fence (blocking)
-    "w": "tile_water.png",          # deep water
-    "W": "tile_water_edge_t.png",   # water edge
-    "R": "tile_roof_l.png",         # roof left
-    "r": "tile_roof_r.png",         # roof right
-    "L": "tile_wall_l.png",         # wall left
-    "l": "tile_wall_r.png",         # wall right
-    "D": "tile_door.png",           # door
-    "f": "tile_fence.png",          # fence
-    "B": "tile_bridge.png",         # bridge over water
-    "A": "tile_arena.png",          # arena floor
-    "F": "tile_water_edge_b.png",   # fishing spot / water edge
-    "N": "tile_sign.png",            # sign post
+    ".": "tile_grass.png",
+    "g": "tile_tall_grass.png",
+    "d": "tile_path.png",
+    "p": "tile_path2.png",
+    "s": "tile_path.png",
+    "S": "tile_path.png",
+    "1": "tile_tree_tl.png",
+    "2": "tile_tree_tr.png",
+    "3": "tile_tree_bl.png",
+    "4": "tile_tree_br.png",
+    "T": "tile_tree_thin.png",
+    "C": "tile_cut_tree.png",
+    "I": "tile_item.png",
+    "F": "tile_fence.png",
+    "f": "tile_fence.png",
+    "w": "tile_water.png",
+    "W": "tile_water_edge_t.png",
+    "R": "tile_rock.png",
+    "L": "tile_wall_l.png",
+    "l": "tile_wall_r.png",
+    "D": "tile_door.png",
+    "B": "tile_bridge.png",
+    "A": "tile_arena.png",
+    "z": "tile_dirt.png",
+    "K": "tile_door.png",
+    "O": "tile_path.png",
+    "Q": "tile_door.png",
+    "P": "tile_door.png",
+    "M": "tile_wall.png",
+    "N": "tile_sign.png",
+    "b": "tile_rock.png",
 }
 
 
@@ -93,8 +98,10 @@ class Assets:
         self.players = {}   # prefix -> {direction -> [frame0, frame1, frame2]}
         self.surf = {}      # prefix -> {"ride": {dir->img}, "mount": {dir->img}}
         self.creatures = {}
+        self.rock_smash_frames = []  # 4 frames for rock break animation
         self._load_tiles()
         self._load_npc()
+        self._load_rock_smash()
 
     def _img(self, path, size=None):
         if not os.path.exists(path):
@@ -131,7 +138,7 @@ class Assets:
 
     def _load_npc(self):
         self.npcs = {}
-        npc_files = ["npc_fisher", "npc_boy", "npc_girl", "npc_oldman", "npc_hiker", "npc_scientist"]
+        npc_files = ["npc_fisher", "npc_boy", "npc_girl", "npc_oldman", "npc_hiker", "npc_scientist", "npc_brock", "npc_lance"]
         for name in npc_files:
             s = self._img(os.path.join(ASSET_DIR, f"{name}.png"), (TILE_SIZE, TILE_SIZE * 2))
             if s:
@@ -142,43 +149,46 @@ class Assets:
         self.trainer_faces = {}
         self._load_trainer_faces()
 
+    def _load_rock_smash(self):
+        """Load rock smash animation frames from assets/ (generated from sprites.json)."""
+        self.rock_smash_frames = []
+        for i in range(4):
+            path = os.path.join(ASSET_DIR, f"tile_rock_smash_{i}.png")
+            if os.path.exists(path):
+                surf = self._img(path, (TILE_SIZE, TILE_SIZE))
+                if surf:
+                    self.rock_smash_frames.append(surf)
+
     def _load_trainer_faces(self):
-        # sorgente solo dalla ROM / decomp chr a runtime, ma se non trovata fallback OW
-        import pathlib
-        mapping = {
-            "red": "red_front_pic.png",
-            "leaf": "leaf_front_pic.png",
-            "green": "leaf_front_pic.png",
-            "blue": "champion_rival_front_pic.png",
+        self.trainer_faces = {}
+        ow_fallback = {
+            "red": "player_red",
+            "leaf": "player_green",
+            "green": "player_green",
+            "blue": "player_blue",
+            "brock": "npc_brock",
+            "rival_early": "player_blue",
+            "rival_late": "player_blue",
+            "champion_rival": "player_blue",
         }
-        for char_id, fname in mapping.items():
-            candidates = [
-                os.path.join(BASE_DIR, "..", "pokefirered", "graphics", "trainers", "front_pics", fname),
-                f"/home/mf/Desktop/pokefirered/graphics/trainers/front_pics/{fname}",
-            ]
-            path = next((c for c in candidates if os.path.exists(c)), None)
+        for char_id in list(ow_fallback.keys()):
+            face_path = os.path.join(ASSET_DIR, f"trainer_{char_id}.png")
             img = None
-            if path:
+            if os.path.exists(face_path):
                 try:
-                    # PNG è 64x64 o 80x80 con palette; convertiamo
                     from PIL import Image as PILImage
-                    pil = PILImage.open(path).convert("RGBA")
-                    # centra e ritaglia 64x64 -> 48x48 per HUD
-                    # alcuni front pics sono 64x64, altri 80x80; prendiamo centro
-                    w, h = pil.size
-                    # salva temporaneo per pygame
-                    tmp = f"/tmp/trainer_{char_id}.png"
+                    pil = PILImage.open(face_path).convert("RGBA")
+                    pil = pil.resize((48, 48), PILImage.NEAREST)
+                    tmp = f"/tmp/trainer_face_{char_id}.png"
                     pil.save(tmp)
                     img = self._img(tmp, (48, 48))
                 except Exception:
                     img = None
             if img is None:
-                # fallback: usa OW sprite down come faccia
-                prefix = {"red":"player_red","leaf":"player_green","green":"player_green","blue":"player_blue"}.get(char_id, "player_red")
+                prefix = ow_fallback.get(char_id, "player_red")
                 self.load_player(prefix)
                 img = self.player_frame(prefix, "down", 0)
                 if img:
-                    # ritaglia testa
                     try:
                         img = pygame.transform.scale(img, (48, 48))
                     except Exception:
@@ -356,7 +366,7 @@ class Camera:
 
 # ---------- Drawing ---------------------------------------------------------
 
-def draw_map(surface, session, assets, camera):
+def draw_map(surface, session, assets, camera, rock_break_anim=None):
     """Draw map using pre-rendered background image (authentic retro RPG look)."""
     if not hasattr(assets, 'map_bg') or assets.map_bg is None:
         bg_file = session.get_current_map().get("background")
@@ -385,7 +395,10 @@ def draw_map(surface, session, assets, camera):
         for row in range(start_row, end_row):
             for col in range(start_col, end_col):
                 ch = session.get_tile_at(col, row)
-                orig_ch = layout[row][col] if row < len(layout) and col < len(layout[row]) else None
+                if row < len(layout) and col < len(layout[row]):
+                    orig_ch = layout[row][col]
+                else:
+                    orig_ch = None
                 sx, sy = camera.to_screen(col * TILE_SIZE, row * TILE_SIZE)
                 if orig_ch == "C" and ch == "d":
                     # Tree was cut - paint over with BG path color
@@ -399,6 +412,14 @@ def draw_map(surface, session, assets, camera):
                         if src_x + TILE_SIZE <= bg_w and src_y + TILE_SIZE <= bg_h:
                             patch = assets.map_bg.subsurface((src_x, src_y, TILE_SIZE, TILE_SIZE))
                             surface.blit(patch, (sx, sy))
+                elif orig_ch == "R" and ch == "z":
+                    # Rock was broken - paint sand tile over the rock
+                    tile_surf = assets.get_tile("z")
+                    surface.blit(tile_surf, (sx, sy))
+                elif orig_ch == "R" and ch == "R":
+                    # Rock still present - draw rock sprite overlay
+                    tile_surf = assets.get_tile("R")
+                    surface.blit(tile_surf, (sx, sy))
                 elif ch == "I":
                     # Item still present - draw pokeball overlay
                     tile_surf = assets.get_tile("I")
@@ -426,6 +447,39 @@ def draw_map(surface, session, assets, camera):
             night = pygame.Surface((VIEW_TILES_X * TILE_SIZE, VIEW_TILES_Y * TILE_SIZE), pygame.SRCALPHA)
             night.fill((18, 20, 48, 38))
             surface.blit(night, (0, 0))
+        except Exception:
+            pass
+    # Rock break animation overlay
+    if rock_break_anim is not None:
+        # Draw the animation frame
+        frame_idx = rock_break_anim["frame"]
+        if assets.rock_smash_frames and frame_idx < len(assets.rock_smash_frames):
+            frame = assets.rock_smash_frames[frame_idx]
+            # Convert PIL frame to pygame surface
+            frame_data = frame.tobytes()
+            frame_surf = pygame.image.fromstring(frame_data, (16, 16), "RGBA")
+            frame_surf = pygame.transform.scale(frame_surf, (TILE_SIZE, TILE_SIZE))
+            sx, sy = camera.to_screen(rock_break_anim["x"] * TILE_SIZE, rock_break_anim["y"] * TILE_SIZE)
+            surface.blit(frame_surf, (sx, sy))
+        # Update animation
+        rock_break_anim["ticks"] += 1
+        if rock_break_anim["ticks"] >= 8:  # 8 ticks per frame
+            rock_break_anim["ticks"] = 0
+            rock_break_anim["frame"] += 1
+            if rock_break_anim["frame"] >= 4:  # Animation complete
+                rock_break_anim = None
+    # Sandstorm effect for desert maps
+    if session.current_map_key in ("rock_desert", "rock_desert_arena", "rock_desert_shelter"):
+        try:
+            import random
+            sandstorm = pygame.Surface((VIEW_TILES_X * TILE_SIZE, VIEW_TILES_Y * TILE_SIZE), pygame.SRCALPHA)
+            for _ in range(15):  # 15 sand particles
+                x = random.randint(0, VIEW_TILES_X * TILE_SIZE)
+                y = random.randint(0, VIEW_TILES_Y * TILE_SIZE)
+                size = random.randint(2, 5)
+                alpha = random.randint(30, 80)
+                pygame.draw.rect(sandstorm, (210, 180, 120, alpha), (x, y, size, size))
+            surface.blit(sandstorm, (0, 0))
         except Exception:
             pass
 
@@ -676,6 +730,20 @@ def draw_battle(surface, session, assets, font, b_cur, m_cur):
             surface.blit(font.render(f"{j+1}.{mv.name} P:{mv.power}", True, c), (20+j*148, my+32))
     for idx, msg in enumerate(battle.log[-3:]):
         surface.blit(font.render(msg, True, C_GREY), (20, my + 60 + idx * 17))
+    # Sandstorm battle weather effect
+    if session.current_map_key in ("rock_desert", "rock_desert_arena", "rock_desert_shelter"):
+        try:
+            import random
+            sandstorm = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+            for _ in range(25):
+                x = random.randint(0, SCREEN_W)
+                y = random.randint(0, SCREEN_H)
+                size = random.randint(2, 6)
+                alpha = random.randint(40, 100)
+                pygame.draw.rect(sandstorm, (210, 180, 120, alpha), (x, y, size, size))
+            surface.blit(sandstorm, (0, 0))
+        except Exception:
+            pass
 
 
 def draw_inventory(surface, session, font):
@@ -703,6 +771,36 @@ def draw_inventory(surface, session, font):
     for c in session.player.team:
         st = "FAINTED" if c.is_fainted() else "OK"
         surface.blit(font.render(f"  {c.name} Lv{c.level} HP:{c.hp}/{c.max_hp} [{st}]", True, C_WHITE), (20, y)); y += 18
+
+
+def draw_hm_teach_menu(surface, session, font, hm_name, cursor):
+    ov = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+    ov.fill((0, 0, 0, 190))
+    surface.blit(ov, (0, 0))
+    title = f"Teach {hm_name.upper()} to whom?"
+    surface.blit(font.render(title, True, C_HIGHLIGHT), (SCREEN_W//2 - 80, 20))
+    y = 55
+    team = session.player.team
+    for i, c in enumerate(team):
+        prefix = "> " if i == cursor else "  "
+        st = "FAINTED" if c.is_fainted() else f"HP:{c.hp}/{c.max_hp}"
+        can_learn = True
+        if hm_name == "cut" and c.can_cut:
+            can_learn = False
+            st += " [already knows]"
+        elif hm_name == "surf" and c.can_surf:
+            can_learn = False
+            st += " [already knows]"
+        elif hm_name == "rock_smash" and getattr(c, 'can_rock_smash', False):
+            can_learn = False
+            st += " [already knows]"
+        elif hm_name == "strength" and getattr(c, 'can_strength', False):
+            can_learn = False
+            st += " [already knows]"
+        color = C_HIGHLIGHT if i == cursor else C_WHITE
+        surface.blit(font.render(f"{prefix}{c.name} Lv{c.level} {st}", True, color), (30, y))
+        y += 22
+    surface.blit(font.render("Z: confirm  X: cancel", True, C_WHITE), (30, y + 10))
 
 
 def draw_dialogue(surface, text, font, speaker=None):
@@ -855,7 +953,7 @@ def main():
     # unlockable as a playable character only after defeating him.
     def refresh_chars():
         return [cid for cid in characters
-                if cid != "blue" or cid in session.unlocked]
+                if cid not in ("blue", "brock") or cid in session.unlocked]
 
     char_ids = refresh_chars()
     session.state = "MODE_SELECT"
@@ -865,7 +963,10 @@ def main():
     char_cursor = 0
     starter_cursor = 0
     map_cursor = 0
-    available_maps = [{"key": "darkwood", "name": "Darkwood Forest", "desc": "Dense forest with cave, river and arena"}]
+    available_maps = [
+        {"key": "darkwood", "name": "Darkwood Forest", "desc": "Dense forest with cave, river and arena"},
+        {"key": "rock_desert", "name": "Rock Desert", "desc": "Mountain shelter, rock maze, arena and Dragon Cave"},
+    ]
     battle_cursor = 0
     move_cursor = 0
     selected_char = None
@@ -874,11 +975,14 @@ def main():
     dialogue_speaker = None
     collected_rumors = []
     dialogue_timer = 0
+    pending_hm = None
+    hm_cursor = 0
     camera = None
     walker = SmoothWalker()
     pending_encounter = None
     pending_final = False
     surf_transition = None  # {"type": "mount"/"dismount", "dir": ..., "ticks": ...}
+    rock_break_anim = None  # {"x":, "y":, "frame": 0-3, "ticks": 0}
 
     # Input buffer for held-key movement
     move_request = (0, 0)
@@ -946,7 +1050,8 @@ def main():
                     elif event.key == pygame.K_RETURN:
                         sts = characters[selected_char]["starter_options"]
                         sp = sts[starter_cursor]["species"]
-                        session.start_game(selected_char, sp)
+                        chosen_map = available_maps[map_cursor]["key"]
+                        session.start_game(selected_char, sp, map_key=chosen_map)
                         m = session.get_current_map()
                         camera = Camera(m["width"], m["height"])
                         extractor.extract_creature_sprite(sp)
@@ -981,24 +1086,17 @@ def main():
                         if event.key == pygame.K_i:
                             show_inv = False
                         elif event.key == pygame.K_t:
-                            # Teach HM to appropriate team member
                             inv = session.player.inventory
                             for hm in inv.hms_obtained:
-                                already = [c for c in session.player.team if (hm == "cut" and c.can_cut) or (hm == "surf" and c.can_surf)]
-                                if not already and session.player.team:
-                                    if hm == "surf":
-                                        # SURF: teach to first water-type pokemon
-                                        candidate = next((c for c in session.player.team if c.element == "water"), None)
-                                        if candidate:
-                                            candidate.teach_hm(hm)
-                                            dialogue_text = f"Taught SURF to {candidate.name}!"
-                                        else:
-                                            dialogue_text = "No water-type pokemon to teach SURF!"
-                                    else:
-                                        # CUT: teach to first creature
-                                        session.player.team[0].teach_hm(hm)
-                                        dialogue_text = f"Taught {hm.upper()} to {session.player.team[0].name}!"
-                                    dialogue_timer = 90
+                                has_it = [c for c in session.player.team if
+                                          (hm == "cut" and c.can_cut) or
+                                          (hm == "surf" and c.can_surf) or
+                                          (hm == "rock_smash" and getattr(c, 'can_rock_smash', False)) or
+                                          (hm == "strength" and getattr(c, 'can_strength', False))]
+                                if not has_it and session.player.team:
+                                    pending_hm = hm
+                                    hm_cursor = 0
+                                    session.state = "TEACH_HM"
                                     show_inv = False
                                     break
                         continue
@@ -1014,6 +1112,10 @@ def main():
                             dialogue_speaker = r.get("name")
                             if r.get("received"):
                                 dialogue_text += f" [Got: {r['received']}]"
+                            if r.get("teach_hm"):
+                                pending_hm = r["teach_hm"]
+                                hm_cursor = 0
+                                session.state = "TEACH_HM"
                             dialogue_timer = 200
                         elif r and r.get("sign"):
                             dialogue_text = r["text"]; dialogue_speaker = "Sign"
@@ -1034,6 +1136,33 @@ def main():
                                     "nothing_bites": "Nothing's biting..."}
                             dialogue_text = msgs.get(r["reason"], "Can't fish here.")
                             dialogue_timer = 60
+
+                elif session.state == "TEACH_HM":
+                    if dialogue_text:
+                        dialogue_text = None; dialogue_timer = 0
+                        continue
+                    team = session.player.team
+                    if not team:
+                        session.state = "EXPLORING"
+                        continue
+                    if event.key in (pygame.K_UP, pygame.K_w):
+                        hm_cursor = (hm_cursor - 1) % len(team)
+                    elif event.key in (pygame.K_DOWN, pygame.K_s):
+                        hm_cursor = (hm_cursor + 1) % len(team)
+                    elif event.key in (pygame.K_z, pygame.K_RETURN):
+                        chosen = team[hm_cursor]
+                        ok = chosen.teach_hm(pending_hm, rom=session.rom)
+                        if ok:
+                            dialogue_text = f"Taught {pending_hm.upper()} to {chosen.name}!"
+                        else:
+                            dialogue_text = f"{chosen.name} can't learn {pending_hm.upper()}!"
+                        dialogue_speaker = "System"
+                        dialogue_timer = 120
+                        pending_hm = None
+                        session.state = "EXPLORING"
+                    elif event.key in (pygame.K_x, pygame.K_ESCAPE):
+                        pending_hm = None
+                        session.state = "EXPLORING"
 
                 elif session.state in ("BATTLE", "FINAL_BATTLE"):
                     if dialogue_text:
@@ -1141,6 +1270,12 @@ def main():
                             elif result.get("cut"):
                                 dialogue_text = "CUT! Tree cleared."
                                 dialogue_timer = 50
+                            elif result.get("rock_smash"):
+                                # Start rock break animation
+                                rx, ry = result.get("rock_x", 0), result.get("rock_y", 0)
+                                rock_break_anim = {"x": rx, "y": ry, "frame": 0, "ticks": 0}
+                                dialogue_text = "Crack! The rock shattered!"
+                                dialogue_timer = 50
                             elif result.get("pickup"):
                                 item_name = result.get("item_name", "item")
                                 dialogue_text = f"Found {item_name}!"
@@ -1152,6 +1287,12 @@ def main():
                             dialogue_timer = 50
                         elif reason == "need_cut":
                             dialogue_text = "Need CUT for this tree."
+                            dialogue_timer = 50
+                        elif reason == "need_rock_smash":
+                            dialogue_text = "Need Rock Smash for this boulder!"
+                            dialogue_timer = 50
+                        elif reason == "need_strength":
+                            dialogue_text = "Need Strength to push this!"
                             dialogue_timer = 50
                         elif reason == "sign":
                             dialogue_text = "Press Z to read the sign."
@@ -1192,7 +1333,7 @@ def main():
         elif session.state == "MAP_SELECT":
             draw_map_select(screen, font, available_maps, map_cursor)
         elif session.state == "EXPLORING":
-            draw_map(screen, session, assets, camera)
+            draw_map(screen, session, assets, camera, rock_break_anim)
             draw_npcs(screen, session, assets, camera)
             draw_ai(screen, session, assets, camera)
             draw_player(screen, session, assets, camera, walker, surf_transition)
@@ -1203,6 +1344,13 @@ def main():
             draw_rumor_hud(screen, font, collected_rumors)
             if show_inv:
                 draw_inventory(screen, session, font)
+        elif session.state == "TEACH_HM":
+            draw_map(screen, session, assets, camera, rock_break_anim)
+            draw_npcs(screen, session, assets, camera)
+            draw_ai(screen, session, assets, camera)
+            draw_player(screen, session, assets, camera, walker, surf_transition)
+            draw_team_hud(screen, session, assets, font)
+            draw_hm_teach_menu(screen, session, font, pending_hm, hm_cursor)
         elif session.state in ("BATTLE", "FINAL_BATTLE"):
             draw_battle(screen, session, assets, font, battle_cursor, move_cursor)
         elif session.state == "VICTORY":

@@ -70,7 +70,10 @@ class Creature:
     def heal(self, amount):
         self.hp = min(self.max_hp, self.hp + amount)
 
-    def teach_hm(self, hm_name):
+    def teach_hm(self, hm_name, rom=None):
+        """Teach HM move. Returns True if successful, False if species can't learn it."""
+        if rom and not rom.can_learn_hm(self.species_id, hm_name):
+            return False
         if hm_name == "cut":
             self.can_cut = True
             if not any(m.name == "CUT" for m in self.moves):
@@ -79,6 +82,15 @@ class Creature:
             self.can_surf = True
             if not any(m.name == "SURF" for m in self.moves):
                 self.moves.append(Move("SURF", 90, 100, "water", is_hm=True))
+        elif hm_name == "rock_smash":
+            self.can_rock_smash = True
+            if not any(m.name == "ROCK_SMASH" for m in self.moves):
+                self.moves.append(Move("ROCK_SMASH", 40, 100, "fight", is_hm=True))
+        elif hm_name == "strength":
+            self.can_strength = True
+            if not any(m.name == "STRENGTH" for m in self.moves):
+                self.moves.append(Move("STRENGTH", 80, 100, "normal", is_hm=True))
+        return True
 
     def __repr__(self):
         return f"{self.name} Lv{self.level} HP={self.hp}/{self.max_hp}"
@@ -274,8 +286,8 @@ class OpponentState:
         self.team = []  # built during game
         # Blue starts with only the starter and builds the team during the run.
         starter = make_creature_from_rom(starter_species, 8, rom)
-        starter.teach_hm("cut")
-        starter.teach_hm("surf")
+        starter.teach_hm("cut", rom)
+        starter.teach_hm("surf", rom)
         self.team.append(starter)
         # What the player knows
         self.known_starter = False
@@ -347,9 +359,9 @@ class GameSession:
     STATES = ("MODE_SELECT", "TITLE", "CHARACTER_SELECT", "STARTER_SELECT", "MAP_SELECT", "EXPLORING",
               "BATTLE", "FINAL_BATTLE", "INVENTORY", "DIALOGUE", "GAME_OVER", "VICTORY")
 
-    # Centro mappa: punto stabilito al centro dove scatta il teletrasporto/battaglia finale
+    # Default center (overridden per-rival in start_game)
     CENTER_MAP = "area_central"
-    CENTER_POS = (10, 5)  # dentro arena_bounds, dove sta Rival
+    CENTER_POS = (10, 5)
     TIMER_SECONDS = 180  # 3 minuti
 
     def __init__(self):
@@ -366,11 +378,16 @@ class GameSession:
         self.current_dialogue = None
         self.npc_gifts_given = set()  # track which NPCs already gave items
         self.cut_tiles_removed = set()  # (x, y) of removed cuttable trees
+        self.removed_rocks = set()     # IDs of smashed breakable rocks
+        self.pushed_boulders = set()   # IDs of pushed boulders
         self.final_battle_index = 0  # which opponent creature we're fighting
         self.current_map_key = "forest_south"  # default, set in start_game
         self.previous_map_key = None
         self.previous_map_pos = (0, 0)
         self.unlocked = set()  # character ids unlockable by defeating their rival (e.g. "blue")
+        # Center map (set per-rival in start_game)
+        self.center_map = self.CENTER_MAP
+        self.center_pos = self.CENTER_POS
         # Timer & IA (Blue)
         self.timer = self.TIMER_SECONDS
         self.ai_x = 0
@@ -396,8 +413,8 @@ class GameSession:
         self.map_data = load_json("maps.json")
         self.characters = load_json("characters.json")
 
-    def start_game(self, character_id, starter_species_id, seed=None):
-        """Start with chosen character + starter. Random spawn."""
+    def start_game(self, character_id, starter_species_id, seed=None, map_key=None):
+        """Start with chosen character + starter. Random spawn or chosen map."""
         self.seed = seed if seed is not None else random.randint(0, 99999)
         self.rng = random.Random(self.seed)
 
@@ -405,34 +422,91 @@ class GameSession:
         char_data = self.characters[character_id]
         self.player = PlayerState(character_id, starter, char_data.get("starting_items"))
 
-        # Random spawn: 50% forest_south, 50% forest_north
-        spawn_maps = ["forest_south", "forest_north"]
-        spawn_idx = self.rng.randint(0, 1)
-        self.current_map_key = spawn_maps[spawn_idx]
+        if map_key and map_key == "rock_desert":
+            self.current_map_key = "rock_desert"
+        elif map_key and map_key == "darkwood":
+            spawn_maps = ["forest_south", "forest_north"]
+            self.current_map_key = self.rng.choice(spawn_maps)
+        elif map_key and map_key in self.map_data:
+            self.current_map_key = map_key
+        else:
+            spawn_maps = ["forest_south", "forest_north"]
+            self.current_map_key = self.rng.choice(spawn_maps)
         current = self.map_data[self.current_map_key]
-        sp = current["spawn"]
-        self.player.x = sp[0]
-        self.player.y = sp[1]
 
-        # Blue is the fixed rival of the forest map (not playable at the start).
-        opp_char = "blue" if "blue" in self.characters else next(
-            c for c in self.characters if c != character_id
-        )
+        # Opponent: Brock on rock_desert, Blue elsewhere
+        is_desert = self.current_map_key == "rock_desert"
+        if is_desert and "brock" in self.characters:
+            opp_char = "brock"
+        else:
+            opp_char = "blue" if "blue" in self.characters else next(
+                c for c in self.characters if c != character_id
+            )
         opp_starters = self.characters[opp_char]["starter_options"]
         opp_starter = self.rng.choice(opp_starters)["species"]
         self.opponent = OpponentState(opp_char, opp_starter, self.rom)
 
-        # Timer e IA: IA spawn opposto al player
+        # Set center map per rival
+        if is_desert:
+            self.center_map = "rock_desert_arena"
+            self.center_pos = (10, 7)
+        else:
+            self.center_map = "area_central"
+            self.center_pos = (10, 5)
+
+        # Timer e IA
         self.timer = self.TIMER_SECONDS
-        other_map = "forest_north" if self.current_map_key == "forest_south" else "forest_south"
-        self.ai_map_key = other_map
-        sp_ai = self.map_data[self.ai_map_key]["spawn"]
-        self.ai_x = sp_ai[0]
-        self.ai_y = sp_ai[1]
-        self.ai_route = "north" if self.ai_map_key == "forest_north" else "south"
         self.ai_has_cut = True
         self.ai_has_surf = True
-        if self.ai_route == "north":
+
+        if is_desert:
+            self.ai_map_key = "rock_desert"
+            self.ai_route = "desert"
+            # Random spawn: player and Brock on opposite sides
+            sp_shelter = current.get("spawn_shelter", [14, 4])
+            sp_desert = current.get("spawn_desert", [22, 17])
+            if self.rng.random() < 0.5:
+                self.player.x, self.player.y = sp_shelter[0], sp_shelter[1]
+                self.ai_x, self.ai_y = sp_desert[0], sp_desert[1]
+                self.ai_spawn_side = "east"
+            else:
+                self.player.x, self.player.y = sp_desert[0], sp_desert[1]
+                self.ai_x, self.ai_y = sp_shelter[0], sp_shelter[1]
+                self.ai_spawn_side = "west"
+            # Brock waypoints - navigate through maze and arena
+            if self.ai_spawn_side == "east":
+                self.ai_waypoints = [
+                    ("rock_desert", 22, 17),
+                    ("rock_desert", 22, 15),
+                    ("rock_desert", 14, 15),
+                    ("rock_desert", 14, 11),
+                    ("rock_desert", 12, 11),
+                    ("rock_desert", 12, 7),
+                    ("rock_desert", 14, 4),
+                    ("rock_desert", 1, 20),
+                    ("rock_desert_arena", 17, 2),
+                    ("rock_desert_arena", 8, 7),
+                ]
+            else:
+                self.ai_waypoints = [
+                    ("rock_desert", 14, 4),
+                    ("rock_desert", 12, 4),
+                    ("rock_desert", 12, 7),
+                    ("rock_desert", 17, 7),
+                    ("rock_desert", 17, 10),
+                    ("rock_desert", 14, 10),
+                    ("rock_desert", 14, 15),
+                    ("rock_desert", 1, 20),
+                    ("rock_desert_arena", 17, 2),
+                    ("rock_desert_arena", 8, 7),
+                ]
+            self.ai_log = [f"Brock è partito da {current['name']}"]
+        elif self.current_map_key == "forest_south":
+            # Player on forest_south -> Blue on forest_north -> training in grass -> area_central
+            self.ai_map_key = "forest_north"
+            sp_ai = self.map_data["forest_north"]["spawn"]
+            self.ai_x, self.ai_y = sp_ai[0], sp_ai[1]
+            self.ai_route = "south"
             self.ai_waypoints = [
                 ("forest_north", 14, 10),
                 ("forest_north", 6, 4),
@@ -440,9 +514,14 @@ class GameSession:
                 ("forest_north", 14, 18),
                 ("forest_north", 14, 20),
                 ("area_central", 10, 1),
-                ("area_central", 2, 2),
+                ("area_central", 10, 5),
             ]
-        else:
+        elif self.current_map_key == "forest_north":
+            # Player on forest_north -> Blue on forest_south -> training in grass -> river -> area_central
+            self.ai_map_key = "forest_south"
+            sp_ai = self.map_data["forest_south"]["spawn"]
+            self.ai_x, self.ai_y = sp_ai[0], sp_ai[1]
+            self.ai_route = "north"
             self.ai_waypoints = [
                 ("forest_south", 14, 10),
                 ("forest_south", 10, 8),
@@ -450,12 +529,33 @@ class GameSession:
                 ("river_area", 14, 0),
                 ("river_area", 5, 5),
                 ("area_central", 10, 12),
-                ("area_central", 10, 8),
+                ("area_central", 10, 5),
             ]
+        else:
+            # Fallback: Blue on forest_north -> area_central
+            self.ai_map_key = "forest_north"
+            sp_ai = self.map_data["forest_north"]["spawn"]
+            self.ai_x, self.ai_y = sp_ai[0], sp_ai[1]
+            self.ai_route = "north"
+            self.ai_waypoints = [
+                ("forest_north", 14, 10),
+                ("forest_north", 6, 4),
+                ("area_central", 10, 1),
+                ("area_central", 10, 5),
+            ]
+
+        if not is_desert:
+            sp = current["spawn"]
+            self.player.x, self.player.y = sp[0], sp[1]
         self.ai_waypoint_index = 0
         self.ai_direction = "down"
         self.ai_tick = 0
-        self.ai_log = [f"Blue è partito da {self.map_data[self.ai_map_key]['name']}"]
+        # Blue loops first N waypoints (grass training) until team is full
+        if not is_desert:
+            self.ai_training_end = 3  # spawn + 2 grass tiles
+            self.ai_log = [f"Blue è partito da {self.map_data[self.ai_map_key]['name']}"]
+        else:
+            self.ai_training_end = 0  # Brock goes straight
         self.ai_level_timer = 0
         # log iniziale team
         if self.opponent.team:
@@ -481,13 +581,16 @@ class GameSession:
         return self.map_data.get(self.current_map_key, {})
 
     def get_tile_at(self, x, y):
-        """Get tile character at position, accounting for cut tiles."""
+        """Get tile character at position, accounting for cut tiles and broken rocks."""
         if (x, y) in self.cut_tiles_removed:
-            return 'd'  # cut tree becomes path
+            return 'd'
+        rock_id = f"{self.current_map_key}_rock_{x}_{y}"
+        if rock_id in self.removed_rocks:
+            return 'O'
         layout = self.map_data[self.current_map_key]["layout"]
-        if 0 <= y < len(layout) and 0 <= x < len(layout[0]):
+        if 0 <= y < len(layout) and 0 <= x < len(layout[y]):
             return layout[y][x]
-        return 'T'  # out of bounds = impassable
+        return 'T'
 
     @staticmethod
     def _nearest_walkable_col(layout, row, walkable, x):
@@ -617,6 +720,14 @@ class GameSession:
             else:
                 return {"blocked": True, "reason": "need_cut"}
 
+        # Breakable rock requires Spaccaroccia
+        elif tile == 'R':
+            return {"blocked": True, "reason": "need_rock_smash"}
+
+        # Boulder requires Forza to push (use interact)
+        elif tile == 'b':
+            return {"blocked": True, "reason": "need_strength"}
+
         elif tile not in walkable:
             return {"blocked": True}
 
@@ -673,7 +784,8 @@ class GameSession:
                 current_map["layout"][new_y] = "".join(row_list)
                 return {"moved": True, "tile": tile, "pickup": True, "item_name": gi.get("name", item_id)}
         # Check for encounters
-        if tile == 'g':
+        encounter_tiles = current_map.get("encounter_tiles", ["g"])
+        if tile in encounter_tiles:
             enc_rate = current_map.get("encounter_rate", 20)
             if self.rng.randint(1, 100) <= enc_rate:
                 return self._trigger_wild_encounter(current_map, new_y)
@@ -804,21 +916,32 @@ class GameSession:
                             self.player.inventory.add_key_item("old_rod")
                             self.player.inventory.obtain_hm("surf")
                             result["received"] = "Old Rod & HM SURF"
+                            result["teach_hm"] = "surf"
                         elif gift == "potion_x3":
                             self.player.inventory.add_item("potion", 3)
                             result["received"] = "3 Potions"
                         elif gift == "hm_cut":
                             self.player.inventory.obtain_hm("cut")
-                            active = self.player.active_creature()
-                            if active:
-                                active.teach_hm("cut")
                             result["received"] = "HM CUT"
+                            result["teach_hm"] = "cut"
                         elif gift == "hm_surf":
                             self.player.inventory.obtain_hm("surf")
-                            active = self.player.active_creature()
-                            if active:
-                                active.teach_hm("surf")
                             result["received"] = "HM SURF"
+                            result["teach_hm"] = "surf"
+                        elif gift == "dratini":
+                            dratini = make_creature_from_rom(147, 15, self.rom)
+                            if self.player.add_creature(dratini):
+                                result["received"] = "Dratini"
+                            else:
+                                result["received"] = "Dratini (team full!)"
+                        elif gift == "rock_smash":
+                            self.player.inventory.obtain_hm("rock_smash")
+                            result["received"] = "HM Spaccaroccia"
+                            result["teach_hm"] = "rock_smash"
+                        elif gift == "strength":
+                            self.player.inventory.obtain_hm("strength")
+                            result["received"] = "HM Forza"
+                            result["teach_hm"] = "strength"
                         self.npc_gifts_given.add(npc_id)
                     if "reveals" in npc:
                         self.opponent.reveal(npc["reveals"])
@@ -835,6 +958,52 @@ class GameSession:
                 if sign.get("is_rumor"):
                     result["text"] = f"{result['text']} [Indizio: {self.get_ai_clue()}]"
                 return result
+
+        # Breakable rock check (Spaccaroccia)
+        current_map_key = self.current_map_key
+        for rock in current_map.get("breakable_rocks", []):
+            if rock["x"] == tx and rock["y"] == ty:
+                rock_id = f"{current_map_key}_rock_{rock['x']}_{rock['y']}"
+                if rock_id in self.removed_rocks:
+                    return {"nothing": True}
+                if self.player.inventory.has_hm("rock_smash"):
+                    active = self.player.active_creature()
+                    if active and any(m.name == "ROCK_SMASH" for m in active.moves):
+                        self.removed_rocks.add(rock_id)
+                        return {"rock_smash": True, "rock_x": rock["x"], "rock_y": rock["y"]}
+                    else:
+                        return {"npc": True, "dialogue": "It's a big rock. If only I had Spaccaroccia...", "name": "Rock"}
+                else:
+                    return {"npc": True, "dialogue": "It's a big rock. If only I had Spaccaroccia...", "name": "Rock"}
+
+        # Boulder check (Forza / Strength)
+        for boulder in current_map.get("boulders", []):
+            if boulder["x"] == tx and boulder["y"] == ty:
+                boulder_id = f"{current_map_key}_boulder_{boulder['x']}_{boulder['y']}"
+                if boulder_id in self.pushed_boulders:
+                    return {"nothing": True}
+                if self.player.inventory.has_hm("strength"):
+                    active = self.player.active_creature()
+                    if active and any(m.name == "STRENGTH" for m in active.moves):
+                        # Push boulder in facing direction
+                        push = boulder.get("pushes_to", {})
+                        px, py = push.get("x", tx + dx), push.get("y", ty + dy)
+                        dest_layout = current_map["layout"]
+                        if 0 <= py < len(dest_layout) and 0 <= px < len(dest_layout[0]):
+                            dest_ch = dest_layout[py][px]
+                            if dest_ch in ('z', 'd', 'A'):
+                                self.pushed_boulders.add(boulder_id)
+                                layout = list(current_map["layout"])
+                                old_row = list(layout[boulder["y"]])
+                                old_row[boulder["x"]] = 'z'
+                                layout[boulder["y"]] = ''.join(old_row)
+                                current_map["layout"] = layout
+                                return {"npc": True, "dialogue": "The boulder was pushed aside!", "name": "Boulder"}
+                        return {"npc": True, "dialogue": "I can't push it here.", "name": "Boulder"}
+                    else:
+                        return {"npc": True, "dialogue": "It's a huge boulder. If only I had Forza...", "name": "Boulder"}
+                else:
+                    return {"npc": True, "dialogue": "It's a huge boulder. If only I had Forza...", "name": "Boulder"}
 
         return {"nothing": True}
 
@@ -935,10 +1104,10 @@ class GameSession:
 
         # helper: dentro arena?
         def _in_arena(map_key, x, y):
-            if map_key != self.CENTER_MAP:
+            if map_key != self.center_map:
                 return False
             b = self.map_data[map_key].get("arena_bounds")
-            if not b: return (x, y) == self.CENTER_POS
+            if not b: return (x, y) == self.center_pos
             return b["x1"] <= x <= b["x2"] and b["y1"] <= y <= b["y2"]
 
         # IA Blue: si muove verso il centro
@@ -957,7 +1126,7 @@ class GameSession:
             if _in_arena(self.current_map_key, self.player.x, self.player.y):
                 return self._trigger_center_battle("player_reached")
             # se IA era già in arena all'avvio del frame, triggera comunque
-            if _in_arena(self.ai_map_key, self.ai_x, self.ai_y) and self.current_map_key == self.CENTER_MAP:
+            if _in_arena(self.ai_map_key, self.ai_x, self.ai_y) and self.current_map_key == self.center_map:
                 # se IA è già lì e player entra nella mappa centrale, triggera quando player è vicino
                 if abs(self.player.x - self.ai_x) <= 5 and abs(self.player.y - self.ai_y) <= 5:
                     return self._trigger_center_battle("ai_waiting")
@@ -965,12 +1134,12 @@ class GameSession:
 
     def _trigger_center_battle(self, reason):
         """Teletrasporta l'altro al centro e avvia la battaglia finale."""
-        # porta entrambi su area_central centro
-        self.current_map_key = self.CENTER_MAP
-        self.ai_map_key = self.CENTER_MAP
-        cx, cy = self.CENTER_POS
+        # porta entrambi al centro della mappa del rival corrente
+        self.current_map_key = self.center_map
+        self.ai_map_key = self.center_map
+        cx, cy = self.center_pos
         self.player.x, self.player.y = cx, cy + 1  # player appena sotto il centro
-        self.ai_x, self.ai_y = cx, cy  # IA sul centro (dove stava Rival)
+        self.ai_x, self.ai_y = cx, cy  # IA sul centro (dove sta Rival)
         # avvia battaglia finale
         return self._trigger_final_battle()
 
@@ -980,7 +1149,7 @@ class GameSession:
         if not (0 <= y < len(layout) and 0 <= x < len(layout[0])):
             return False
         ch = layout[y][x]
-        if map_key == self.CENTER_MAP:
+        if map_key == self.center_map:
             bounds = self.map_data[map_key].get("arena_bounds", {})
             if (bounds.get("x1", 0) <= x <= bounds.get("x2", -1)
                     and bounds.get("y1", 0) <= y <= bounds.get("y2", -1)):
@@ -993,11 +1162,9 @@ class GameSession:
         if ch in ('w', 'B'):
             return self.ai_has_surf
         # IA ignora blocchi Cut/Water come se avesse HM
-        if ch in ('T', 'M', 'G', 'W', 'N', 'F', 'H', '[', ']', '^', '~', '`', 'E', 'A'):
-            # T = albero è bloccante per IA (non taglia) -> evita, ma se necessario passa
+        if ch in ('T', 'M', 'G', 'W', 'N', 'F', 'H', '[', ']', '^', '~', '`', 'E', 'R', 'b', 'Q', 'P'):
             return False
-        # walkable include water/cut per IA
-        # consideriamo walkable anche g,d,w,B,C,I,.,N etc
+        # Arena is walkable for IA (gym leader moves inside)
         return True
 
     def _ai_neighbors(self, map_key, x, y):
@@ -1020,7 +1187,7 @@ class GameSession:
                 dest_key = edges.get(direction)
                 if dest_key and dest_key in self.map_data:
                     if (self.ai_route == "north" and not self.ai_has_cut
-                            and dest_key == self.CENTER_MAP):
+                            and dest_key == self.center_map):
                         continue
                     dest_layout = self.map_data[dest_key]["layout"]
                     # landing come in _edge_landing: nearest walkable col/row
@@ -1077,7 +1244,7 @@ class GameSession:
                 for portal in data.get("portals", []):
                     if portal["x"]==nx and portal["y"]==ny:
                         if (self.ai_route == "north" and not self.ai_has_cut
-                                and portal["dest_map"] == self.CENTER_MAP):
+                                and portal["dest_map"] == self.center_map):
                             blocked = True
                             break
                         res.append((portal["dest_map"], portal["dest_x"], portal["dest_y"]))
@@ -1089,30 +1256,33 @@ class GameSession:
 
     def _ai_handle_post_move(self):
         """Dopo aver mosso Blue, simula gioco: encounters, catture, log per indizi dinamici."""
-        # ogni tanto level up
+        # ogni tanto level up (più lento: ~60s)
         self.ai_level_timer += 1
-        if self.ai_level_timer >= 2400:  # ~40s at the default AI speed
+        if self.ai_level_timer >= 3600:
             self.ai_level_timer = 0
             for c in self.opponent.team:
                 c.level = min(20, c.level + 1)
-                c.max_hp = c._calc_hp(); c.hp = min(c.hp+2, c.max_hp)
+                c.max_hp = c._calc_hp(); c.hp = c.max_hp
             self.ai_log.append(f"Blue si è allenato, ora Lv{max(c.level for c in self.opponent.team)}")
             if len(self.ai_log) > 12: self.ai_log.pop(0)
-        # check tall grass encounter
+        # check tall grass / desert encounter - priorità: riempire la squadra
         try:
             layout = self.map_data[self.ai_map_key]["layout"]
             ch = layout[self.ai_y][self.ai_x] if 0 <= self.ai_y < len(layout) and 0 <= self.ai_x < len(layout[0]) else '.'
-            if ch == 'g' and self.rng.random() < 0.05:
+            encounter_tiles = self.map_data[self.ai_map_key].get("encounter_tiles", ["g"])
+            if ch in encounter_tiles:
                 wild_table = self.map_data[self.ai_map_key].get("wild_creatures", [])
                 if wild_table and len(self.opponent.team) < 6:
-                    entry = self.rng.choice(wild_table)
-                    lvl = self.rng.randint(entry["min_level"], entry["max_level"])
-                    wild = make_creature_from_rom(entry["species_id"], lvl, self.rom)
-                    self.opponent.team.append(wild)
-                    self.ai_log.append(f"Blue ha catturato {wild.name} Lv{lvl} in {self.map_data[self.ai_map_key]['name']}")
-                    if len(self.ai_log) > 12: self.ai_log.pop(0)
-                    self.opponent.known_team_count = True
-                elif self.opponent.team and self.rng.random() < 0.05:
+                    if self.rng.random() < 0.05:
+                        entry = self.rng.choice(wild_table)
+                        lvl = self.rng.randint(entry["min_level"], entry["max_level"])
+                        wild = make_creature_from_rom(entry["species_id"], lvl, self.rom)
+                        self.opponent.team.append(wild)
+                        self.ai_log.append(f"Blue ha catturato {wild.name} Lv{lvl} in {self.map_data[self.ai_map_key]['name']}")
+                        if len(self.ai_log) > 12: self.ai_log.pop(0)
+                        self.opponent.known_team_count = True
+                elif self.opponent.team and len(self.opponent.team) < 6 and self.rng.random() < 0.03:
+                    #level up graduale quando squadra non è piena
                     c = max(self.opponent.team, key=lambda creature: creature.level)
                     c.level = min(20, c.level + 1)
                     c.max_hp = c._calc_hp()
@@ -1131,7 +1301,26 @@ class GameSession:
         return self.rng.choice(recent)
 
     def _ai_step_towards_center(self):
-        """Move Blue one step toward the current route waypoint."""
+        """Muove IA verso il centro con BFS + 15% random walk + training loop."""
+        # 15% random walk per rendere ogni partita diversa e cacciare
+        if self.rng.random() < 0.15:
+            neigh = self._ai_neighbors(self.ai_map_key, self.ai_x, self.ai_y)
+            if neigh:
+                choice = self.rng.choice(neigh)
+                if choice[1] > self.ai_x: self.ai_direction="right"
+                elif choice[1] < self.ai_x: self.ai_direction="left"
+                elif choice[2] > self.ai_y: self.ai_direction="down"
+                elif choice[2] < self.ai_y: self.ai_direction="up"
+                self.ai_map_key, self.ai_x, self.ai_y = choice
+                self._ai_handle_post_move()
+            return
+
+        # Se squadra non è piena, resta nelle prime N waypoints (training loop)
+        team_full = len(self.opponent.team) >= 6
+        training_end = getattr(self, 'ai_training_end', 0)
+        if not team_full and training_end > 0 and self.ai_waypoint_index >= training_end:
+            self.ai_waypoint_index = 0
+
         if not self.ai_waypoints:
             return
         current = (self.ai_map_key, self.ai_x, self.ai_y)
