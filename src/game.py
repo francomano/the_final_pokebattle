@@ -7,7 +7,7 @@ All creature/move data read from ROM at runtime.
 import json
 import os
 import random
-from rom_reader import RomReader, find_rom
+from rom_reader import RomReader, find_rom, get_type_multiplier, TYPE_NAMES
 
 # ---------- paths ----------------------------------------------------------
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -23,28 +23,39 @@ def load_json(filename):
 # ---------- Move & Creature -------------------------------------------------
 
 class Move:
-    def __init__(self, name, power, accuracy=100, element="normal", move_id=0, is_hm=False):
+    def __init__(self, name, power, accuracy=100, element="normal", move_id=0, is_hm=False,
+                 high_crit=False, category="physical"):
         self.name = name
         self.power = power
         self.accuracy = accuracy
         self.element = element
         self.move_id = move_id
         self.is_hm = is_hm
+        self.high_crit = high_crit
+        self.category = category  # "physical" or "special"
 
     def __repr__(self):
-        return f"Move({self.name}, pwr={self.power})"
+        return f"Move({self.name}, pwr={self.power}, {self.element})"
+
+
+# Physical types in Gen 3 (everything before TYPE_MYSTERY=9 is physical)
+_PHYSICAL_TYPES = {"normal", "fighting", "flying", "poison", "ground", "rock", "bug", "ghost", "steel"}
 
 
 class Creature:
     def __init__(self, species_id, name, element, base_hp, base_atk, base_def,
-                 base_spd, level=5, moves=None):
+                 base_spd, level=5, moves=None, element2=None,
+                 base_spatk=None, base_spdef=None):
         self.species_id = species_id
         self.name = name
         self.element = element
+        self.element2 = element2 or element
         self.base_hp = base_hp
         self.base_atk = base_atk
         self.base_def = base_def
         self.base_spd = base_spd
+        self.base_spatk = base_spatk if base_spatk is not None else base_atk
+        self.base_spdef = base_spdef if base_spdef is not None else base_def
         self.level = level
         self.moves = moves or []
         self.max_hp = self._calc_hp()
@@ -52,14 +63,29 @@ class Creature:
         self.atk = self._calc_stat(base_atk)
         self.defense = self._calc_stat(base_def)
         self.spd = self._calc_stat(base_spd)
+        self.spatk = self._calc_stat(self.base_spatk)
+        self.spdef = self._calc_stat(self.base_spdef)
         self.can_surf = False
         self.can_cut = False
+        self.can_rock_smash = False
+        self.can_strength = False
+        # Stat stages (6 = default, 0..12 range)
+        self.stat_stages = {"atk": 6, "def": 6, "spatk": 6, "spdef": 6, "spd": 6, "acc": 6, "eva": 6}
 
     def _calc_hp(self):
         return int((self.base_hp * 2 * self.level) / 100) + self.level + 10
 
     def _calc_stat(self, base):
         return int((base * 2 * self.level) / 100) + 5
+
+    def get_effective_stat(self, stat_name):
+        """Get stat value with stage modifier applied."""
+        base_val = getattr(self, stat_name, 0)
+        stage = self.stat_stages.get(stat_name, 6)
+        ratios = [(10,40),(10,35),(10,30),(10,25),(10,20),(10,15),
+                  (10,10),(15,10),(20,10),(25,10),(30,10),(35,10),(40,10)]
+        num, den = ratios[max(0, min(12, stage))]
+        return max(1, int(base_val * num / den))
 
     def is_fainted(self):
         return self.hp <= 0
@@ -77,19 +103,19 @@ class Creature:
         if hm_name == "cut":
             self.can_cut = True
             if not any(m.name == "CUT" for m in self.moves):
-                self.moves.append(Move("CUT", 50, 95, "normal", is_hm=True))
+                self.moves.append(Move("CUT", 50, 95, "normal", is_hm=True, category="physical"))
         elif hm_name == "surf":
             self.can_surf = True
             if not any(m.name == "SURF" for m in self.moves):
-                self.moves.append(Move("SURF", 90, 100, "water", is_hm=True))
+                self.moves.append(Move("SURF", 90, 100, "water", is_hm=True, category="special"))
         elif hm_name == "rock_smash":
             self.can_rock_smash = True
             if not any(m.name == "ROCK_SMASH" for m in self.moves):
-                self.moves.append(Move("ROCK_SMASH", 40, 100, "fight", is_hm=True))
+                self.moves.append(Move("ROCK_SMASH", 40, 100, "fighting", is_hm=True, category="physical"))
         elif hm_name == "strength":
             self.can_strength = True
             if not any(m.name == "STRENGTH" for m in self.moves):
-                self.moves.append(Move("STRENGTH", 80, 100, "normal", is_hm=True))
+                self.moves.append(Move("STRENGTH", 80, 100, "normal", is_hm=True, category="physical"))
         return True
 
     def __repr__(self):
@@ -142,8 +168,27 @@ def make_creature_from_rom(species_id, level, rom_reader):
 
 # ---------- Battle Engine ---------------------------------------------------
 
+# Stat stage ratios from ROM: stage_index -> (numerator, denominator)
+_STAT_STAGE_RATIOS = [
+    (10,40),(10,35),(10,30),(10,25),(10,20),(10,15),
+    (10,10),(15,10),(20,10),(25,10),(30,10),(35,10),(40,10)
+]
+
+# Accuracy stage ratios from ROM
+_ACC_STAGE_RATIOS = [
+    (33,100),(36,100),(43,100),(50,100),(60,100),(75,100),
+    (1,1),(133,100),(166,100),(2,1),(233,100),(133,50),(3,1)
+]
+
+# Critical hit rates by stage: 1/N
+_CRIT_CHANCES = [16, 8, 4, 3, 2]
+
+# High-crit move effects from ROM
+_HIGH_CRIT_EFFECTS = {43, 209, 210, 44}  # EFFECT_HIGH_CRITICAL + others
+
+
 class BattleEngine:
-    def __init__(self, player_creature, enemy_creature, is_final=False):
+    def __init__(self, player_creature, enemy_creature, is_final=False, rom_data=None):
         self.player = player_creature
         self.enemy = enemy_creature
         self.log = []
@@ -151,14 +196,89 @@ class BattleEngine:
         self.finished = False
         self.result = None
         self.is_final = is_final
+        self.rom_data = rom_data
 
-    def calc_damage(self, attacker, defender, move):
-        if move.accuracy > 0 and random.randint(1, 100) > move.accuracy:
-            return 0
-        base_dmg = ((2 * attacker.level / 5 + 2) * move.power *
-                    attacker.atk / defender.defense) / 50 + 2
-        base_dmg *= random.randint(85, 100) / 100.0
-        return max(1, int(base_dmg))
+    def _calc_crit_stage(self, attacker, move):
+        """Calculate critical hit stage from move flags."""
+        stage = 0
+        if move.high_crit:
+            stage += 1
+        if move.element in ("poison",) and move.name in ("POISON_TAIL",):
+            stage += 1
+        return min(stage, len(_CRIT_CHANCES) - 1)
+
+    def _roll_crit(self, attacker, move):
+        """Roll for critical hit. Returns True if crit."""
+        stage = self._calc_crit_stage(attacker, move)
+        chance = _CRIT_CHANCES[stage]
+        return random.randint(1, chance) == 1
+
+    def _calc_accuracy(self, attacker, defender, move):
+        """Gen 3 accuracy formula. Returns True if move hits."""
+        if move.accuracy == 0:
+            return True  # always-hit moves (Swift, etc.)
+        # Combined accuracy-evasion stage
+        acc_stage = attacker.stat_stages.get("acc", 6)
+        eva_stage = defender.stat_stages.get("eva", 6)
+        buff = acc_stage + 6 - eva_stage
+        buff = max(0, min(12, buff))
+        # Apply stage ratio to move accuracy
+        num, den = _ACC_STAGE_RATIOS[buff]
+        calc = num * move.accuracy // den
+        # Roll for hit
+        return random.randint(1, 100) <= calc
+
+    def calc_damage(self, attacker, defender, move, is_crit=False):
+        """Gen 3 damage formula with type effectiveness, STAB, crits."""
+        if move.power == 0:
+            return 0, "", False
+
+        # Determine if physical or special
+        is_physical = move.category == "physical"
+
+        # Get effective stats with stages
+        if is_physical:
+            atk_stat = attacker.get_effective_stat("atk")
+            def_stat = defender.get_effective_stat("def")
+            # On crit, ignore negative stages for attacker, ignore positive for defender
+            if is_crit:
+                if attacker.stat_stages["atk"] < 6:
+                    atk_stat = attacker.atk
+                if defender.stat_stages["def"] > 6:
+                    def_stat = defender.defense
+        else:
+            atk_stat = attacker.get_effective_stat("spatk")
+            def_stat = defender.get_effective_stat("spdef")
+            if is_crit:
+                if attacker.stat_stages["spatk"] < 6:
+                    atk_stat = attacker.spatk
+                if defender.stat_stages["spdef"] > 6:
+                    def_stat = defender.spdef
+
+        # Base damage (Gen 3 formula)
+        level = attacker.level
+        damage = ((2 * level / 5 + 2) * move.power * atk_stat / max(1, def_stat)) / 50 + 2
+
+        # STAB: 1.5x if move type matches attacker type
+        stab = 1.5 if (move.element == attacker.element or move.element == attacker.element2) else 1.0
+
+        # Type effectiveness (from ROM)
+        type_mult, type_msg = get_type_multiplier(move.element, defender.element, defender.element2, self.rom_data)
+
+        # Critical hit multiplier
+        crit_mult = 1.5 if is_crit else 1.0
+
+        # Random factor 85-100%
+        rand_factor = random.randint(85, 100) / 100.0
+
+        # Burn halves physical damage
+        burn_mult = 0.5 if (is_physical and hasattr(attacker, 'status') and attacker.status == "burn") else 1.0
+
+        # Final damage
+        total = damage * stab * type_mult * crit_mult * rand_factor * burn_mult
+        total = max(1, int(total))
+
+        return total, type_msg, is_crit
 
     def player_attack(self, move_index):
         if self.finished:
@@ -168,7 +288,10 @@ class BattleEngine:
         move_idx = min(move_index, len(self.player.moves) - 1)
         p_move = self.player.moves[move_idx]
 
-        if self.player.spd >= self.enemy.spd:
+        # Speed-based turn order
+        player_first = self.player.spd >= self.enemy.spd
+
+        if player_first:
             messages += self._do_attack(self.player, self.enemy, p_move)
             if not self.enemy.is_fainted():
                 e_move = random.choice(self.enemy.moves)
@@ -182,7 +305,7 @@ class BattleEngine:
         if self.enemy.is_fainted():
             self.finished = True
             self.result = "win"
-            messages.append(f"{self.enemy.name} fainted! You win!")
+            messages.append(f"{self.enemy.name} fainted!")
         elif self.player.is_fainted():
             self.finished = True
             self.result = "lose"
@@ -216,6 +339,7 @@ class BattleEngine:
             return []
         if self.is_final:
             return ["Can't capture your rival's creature!"]
+        # Gen 3 catch formula simplified
         hp_factor = (3 * self.enemy.max_hp - 2 * self.enemy.hp) / (3 * self.enemy.max_hp)
         catch_rate = min(255, int(hp_factor * 200 * ball_bonus))
         if random.randint(0, 255) < catch_rate:
@@ -233,11 +357,32 @@ class BattleEngine:
         return msgs
 
     def _do_attack(self, attacker, defender, move):
-        dmg = self.calc_damage(attacker, defender, move)
-        if dmg == 0:
-            return [f"{attacker.name} used {move.name}... but missed!"]
+        msgs = []
+        # Accuracy check
+        if not self._calc_accuracy(attacker, defender, move):
+            msgs.append(f"{attacker.name} used {move.name}... but missed!")
+            return msgs
+
+        # Critical hit roll
+        is_crit = self._roll_crit(attacker, move)
+
+        # Calculate damage with full Gen 3 formula
+        dmg, type_msg, _ = self.calc_damage(attacker, defender, move, is_crit)
         defender.take_damage(dmg)
-        return [f"{attacker.name} used {move.name}! {dmg} dmg to {defender.name}."]
+
+        # Build message
+        msg = f"{attacker.name} used {move.name}!"
+        if is_crit:
+            msg += " A critical hit!"
+        if type_msg == "super":
+            msg += " It's super effective!"
+        elif type_msg == "weak":
+            msg += " It's not very effective..."
+        elif type_msg == "immune":
+            msg += f" It doesn't affect {defender.name}..."
+        msg += f" ({dmg} dmg)"
+        msgs.append(msg)
+        return msgs
 
 
 # ---------- Inventory -------------------------------------------------------
@@ -434,8 +579,8 @@ class GameSession:
             self.current_map_key = self.rng.choice(spawn_maps)
         current = self.map_data[self.current_map_key]
 
-        # Opponent: Brock on rock_desert, Blue elsewhere
-        is_desert = self.current_map_key == "rock_desert"
+        # Opponent: Brock on rock_desert/shelter, Blue elsewhere
+        is_desert = self.current_map_key in ("rock_desert", "rock_desert_shelter")
         if is_desert and "brock" in self.characters:
             opp_char = "brock"
         else:
@@ -460,46 +605,29 @@ class GameSession:
         self.ai_has_surf = True
 
         if is_desert:
-            self.ai_map_key = "rock_desert"
             self.ai_route = "desert"
-            # Random spawn: player and Brock on opposite sides
-            sp_shelter = current.get("spawn_shelter", [14, 4])
+            # Both player and Brock start in the same map so the user can see Brock
+            self.current_map_key = "rock_desert"
+            current = self.map_data[self.current_map_key]
             sp_desert = current.get("spawn_desert", [22, 17])
-            if self.rng.random() < 0.5:
-                self.player.x, self.player.y = sp_shelter[0], sp_shelter[1]
-                self.ai_x, self.ai_y = sp_desert[0], sp_desert[1]
-                self.ai_spawn_side = "east"
-            else:
-                self.player.x, self.player.y = sp_desert[0], sp_desert[1]
-                self.ai_x, self.ai_y = sp_shelter[0], sp_shelter[1]
-                self.ai_spawn_side = "west"
-            # Brock waypoints - navigate through maze and arena
-            if self.ai_spawn_side == "east":
-                self.ai_waypoints = [
-                    ("rock_desert", 22, 17),
-                    ("rock_desert", 22, 15),
-                    ("rock_desert", 14, 15),
-                    ("rock_desert", 14, 11),
-                    ("rock_desert", 12, 11),
-                    ("rock_desert", 12, 7),
-                    ("rock_desert", 14, 4),
-                    ("rock_desert", 1, 20),
-                    ("rock_desert_arena", 17, 2),
-                    ("rock_desert_arena", 8, 7),
-                ]
-            else:
-                self.ai_waypoints = [
-                    ("rock_desert", 14, 4),
-                    ("rock_desert", 12, 4),
-                    ("rock_desert", 12, 7),
-                    ("rock_desert", 17, 7),
-                    ("rock_desert", 17, 10),
-                    ("rock_desert", 14, 10),
-                    ("rock_desert", 14, 15),
-                    ("rock_desert", 1, 20),
-                    ("rock_desert_arena", 17, 2),
-                    ("rock_desert_arena", 8, 7),
-                ]
+            self.player.x, self.player.y = sp_desert[0], sp_desert[1]
+            # Brock nearby player in desert
+            self.ai_map_key = "rock_desert"
+            self.ai_x, self.ai_y = 8, 16
+            self.ai_spawn_side = "east"
+            # Brock waypoints - training through encounter tiles then to arena
+            self.ai_waypoints = [
+                ("rock_desert", 8, 16),
+                ("rock_desert", 9, 16),
+                ("rock_desert", 7, 19),
+                ("rock_desert", 8, 19),
+                ("rock_desert", 9, 19),
+                ("rock_desert", 22, 15),
+                ("rock_desert", 14, 15),
+                ("rock_desert", 1, 21),
+                ("rock_desert_arena", 17, 2),
+                ("rock_desert_arena", 8, 7),
+            ]
             self.ai_log = [f"Brock è partito da {current['name']}"]
         elif self.current_map_key == "forest_south":
             # Player on forest_south -> Blue on forest_north -> training in grass -> area_central
@@ -550,16 +678,14 @@ class GameSession:
         self.ai_waypoint_index = 0
         self.ai_direction = "down"
         self.ai_tick = 0
-        # Blue loops first N waypoints (grass training) until team is full
-        if not is_desert:
-            self.ai_training_end = 3  # spawn + 2 grass tiles
-            self.ai_log = [f"Blue è partito da {self.map_data[self.ai_map_key]['name']}"]
-        else:
-            self.ai_training_end = 0  # Brock goes straight
+        # Rival loops first N waypoints (grass training) until team is full
+        rival_name = self.characters.get(self.opponent.character_id, {}).get("name", "Rival")
+        self.ai_training_end = 3  # spawn + 2 encounter tiles
+        self.ai_log = [f"{rival_name} è partito da {self.map_data[self.ai_map_key]['name']}"]
         self.ai_level_timer = 0
         # log iniziale team
         if self.opponent.team:
-            self.ai_log.append(f"Blue ha {len(self.opponent.team)} creature, la più forte è Lv{max(c.level for c in self.opponent.team)}")
+            self.ai_log.append(f"{rival_name} ha {len(self.opponent.team)} creature, la più forte è Lv{max(c.level for c in self.opponent.team)}")
 
         self.state = "EXPLORING"
 
@@ -822,7 +948,7 @@ class GameSession:
             self.state = "GAME_OVER"
             return {"game_over": True}
 
-        self.battle = BattleEngine(active, wild)
+        self.battle = BattleEngine(active, wild, rom_data=getattr(self, 'rom', None) and self.rom.data)
         self.state = "BATTLE"
         return {"encounter": True, "wild_creature": wild}
 
@@ -839,7 +965,7 @@ class GameSession:
 
         enemy = self.opponent.team[0]
         enemy.hp = enemy.max_hp  # full heal opponent for fair fight
-        self.battle = BattleEngine(active, enemy, is_final=True)
+        self.battle = BattleEngine(active, enemy, is_final=True, rom_data=getattr(self, 'rom', None) and self.rom.data)
         self.state = "FINAL_BATTLE"
         return {"final_battle": True, "opponent": self.opponent}
 
@@ -868,7 +994,7 @@ class GameSession:
                 wild = make_creature_from_rom(entry["species_id"], level, self.rom)
                 active = self.player.active_creature()
                 if active:
-                    self.battle = BattleEngine(active, wild)
+                    self.battle = BattleEngine(active, wild, rom_data=getattr(self, 'rom', None) and self.rom.data)
                     self.state = "BATTLE"
                     return {"encounter": True, "wild_creature": wild, "fishing": True}
         return {"fail": True, "reason": "nothing_bites"}
@@ -907,8 +1033,9 @@ class GameSession:
                 # Give item if applicable
                 npc_id = f"{npc['x']}_{npc['y']}"
                 if npc_id not in self.npc_gifts_given:
-                    if "gives" in npc:
-                        gift = npc["gives"]
+                    gift_key = "gives" if "gives" in npc else "gift"
+                    if gift_key in npc:
+                        gift = npc[gift_key]
                         if gift == "old_rod":
                             self.player.inventory.add_key_item("old_rod")
                             result["received"] = "Old Rod"
@@ -1036,9 +1163,26 @@ class GameSession:
         if self.battle.finished:
             if self.state == "FINAL_BATTLE":
                 return self._handle_final_battle_end(msgs)
+            elif self.battle.result == "captured":
+                self.player.add_creature(self.battle.enemy)
+                self.state = "EXPLORING"
+                self.battle = None
+            elif self.battle.result == "win":
+                self.state = "EXPLORING"
+                self.battle = None
+            elif self.battle.result == "lose":
+                # Wild battle: try next creature in player team
+                active = self.player.active_creature()
+                if active is None:
+                    self.state = "GAME_OVER"
+                    self.battle = None
+                    msgs.append("All your creatures fainted! Game Over.")
+                else:
+                    self.battle.player = active
+                    self.battle.finished = False
+                    self.battle.result = None
+                    msgs.append(f"Go, {active.name}!")
             else:
-                if self.battle.result == "captured":
-                    self.player.add_creature(self.battle.enemy)
                 self.state = "EXPLORING"
                 self.battle = None
         return msgs
@@ -1051,8 +1195,8 @@ class GameSession:
                 self.state = "VICTORY"
                 self.battle = None
                 # Defeating the fixed rival unlocks them as a playable character.
-                if self.opponent.character_id == "blue":
-                    self.unlocked.add("blue")
+                if self.opponent.character_id in ("blue", "brock"):
+                    self.unlocked.add(self.opponent.character_id)
                 msgs.append("You defeated your rival's entire team! VICTORY!")
             else:
                 # Next opponent creature
@@ -1064,7 +1208,7 @@ class GameSession:
                     self.battle = None
                     msgs.append("All your creatures fainted! Game Over.")
                 else:
-                    self.battle = BattleEngine(active, next_enemy, is_final=True)
+                    self.battle = BattleEngine(active, next_enemy, is_final=True, rom_data=getattr(self, 'rom', None) and self.rom.data)
                     msgs.append(f"Rival sends out {next_enemy.name} Lv{next_enemy.level}!")
         elif self.battle.result == "lose":
             # try next creature in player team
@@ -1255,7 +1399,8 @@ class GameSession:
         return res
 
     def _ai_handle_post_move(self):
-        """Dopo aver mosso Blue, simula gioco: encounters, catture, log per indizi dinamici."""
+        """Dopo aver mosso il rivale, simula gioco: encounters, catture, log per indizi dinamici."""
+        rival_name = self.characters.get(self.opponent.character_id, {}).get("name", "Rival")
         # ogni tanto level up (più lento: ~60s)
         self.ai_level_timer += 1
         if self.ai_level_timer >= 3600:
@@ -1263,7 +1408,7 @@ class GameSession:
             for c in self.opponent.team:
                 c.level = min(20, c.level + 1)
                 c.max_hp = c._calc_hp(); c.hp = c.max_hp
-            self.ai_log.append(f"Blue si è allenato, ora Lv{max(c.level for c in self.opponent.team)}")
+            self.ai_log.append(f"{rival_name} si è allenato, ora Lv{max(c.level for c in self.opponent.team)}")
             if len(self.ai_log) > 12: self.ai_log.pop(0)
         # check tall grass / desert encounter - priorità: riempire la squadra
         try:
@@ -1278,7 +1423,7 @@ class GameSession:
                         lvl = self.rng.randint(entry["min_level"], entry["max_level"])
                         wild = make_creature_from_rom(entry["species_id"], lvl, self.rom)
                         self.opponent.team.append(wild)
-                        self.ai_log.append(f"Blue ha catturato {wild.name} Lv{lvl} in {self.map_data[self.ai_map_key]['name']}")
+                        self.ai_log.append(f"{rival_name} ha catturato {wild.name} Lv{lvl} in {self.map_data[self.ai_map_key]['name']}")
                         if len(self.ai_log) > 12: self.ai_log.pop(0)
                         self.opponent.known_team_count = True
                 elif self.opponent.team and len(self.opponent.team) < 6 and self.rng.random() < 0.03:
@@ -1287,15 +1432,16 @@ class GameSession:
                     c.level = min(20, c.level + 1)
                     c.max_hp = c._calc_hp()
                     c.hp = c.max_hp
-                    self.ai_log.append(f"Il {c.name} di Blue è salito a Lv{c.level}")
+                    self.ai_log.append(f"Il {c.name} di {rival_name} è salito a Lv{c.level}")
                     if len(self.ai_log) > 12: self.ai_log.pop(0)
         except Exception:
             pass
 
     def get_ai_clue(self):
-        """Ritorna un indizio dinamico basato su cosa ha fatto Blue (ogni partita diversa)."""
+        """Ritorna un indizio dinamico basato su cosa ha fatto il rivale (ogni partita diversa)."""
+        rival_name = self.characters.get(self.opponent.character_id, {}).get("name", "Rival")
         if not self.ai_log:
-            return "Blue si sta muovendo verso il centro..."
+            return f"{rival_name} si sta muovendo verso il centro..."
         # preferisci ultimi 3 log, pick random per variabilità
         recent = self.ai_log[-3:]
         return self.rng.choice(recent)
@@ -1342,7 +1488,8 @@ class GameSession:
                     queue.append(neighbor)
 
         if target not in previous:
-            self.ai_log.append(f"Blue non trova il percorso verso {target[0]}")
+            rival_name = self.characters.get(self.opponent.character_id, {}).get("name", "Rival")
+            self.ai_log.append(f"{rival_name} non trova il percorso verso {target[0]}")
             return
 
         path = []
@@ -1351,7 +1498,8 @@ class GameSession:
             path.append(next_position)
             next_position = previous.get(next_position)
             if next_position is None:
-                self.ai_log.append(f"Blue non trova il percorso verso {target[0]}")
+                rival_name = self.characters.get(self.opponent.character_id, {}).get("name", "Rival")
+                self.ai_log.append(f"{rival_name} non trova il percorso verso {target[0]}")
                 return
         next_position = path[-1]
         _, next_x, next_y = next_position

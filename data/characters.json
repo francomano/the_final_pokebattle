@@ -27,11 +27,25 @@
     "name": "Leaf",
     "sprite_prefix": "player_green",
     "starter_options": [
-      {"species": 1, "level": 5},
-      {"species": 7, "level": 5}
+      {"species": 35, "level": 5},
+      {"species": 92, "level": 5}
     ],
     "starting_items": [
       {"item": "potion", "count": 4},
+      {"item": "pokeball", "count": 4}
+    ]
+  },
+  "brock": {
+    "name": "Brock",
+    "sprite_prefix": "npc_brock",
+    "is_opponent": true,
+    "starter_options": [
+      {"species": 95, "level": 8},
+      {"species": 74, "level": 8},
+      {"species": 111, "level": 8}
+    ],
+    "starting_items": [
+      {"item": "potion", "count": 3},
       {"item": "pokeball", "count": 4}
     ]
   }

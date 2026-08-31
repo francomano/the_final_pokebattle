@@ -40,6 +40,65 @@ TYPE_NAMES = [
     "grass", "electric", "psychic", "ice", "dragon", "dark"
 ]
 
+# Multiplier constants matching ROM values
+TYPE_MUL_NO_EFFECT = 0
+TYPE_MUL_NOT_EFFECTIVE = 5
+TYPE_MUL_NORMAL = 10
+TYPE_MUL_SUPER_EFFECTIVE = 20
+
+# Offset of gTypeEffectiveness table in FireRed ROM
+OFFSET_TYPE_EFFECTIVENESS = 0x24F050
+TYPE_EFFECTIVENESS_SIZE = 336  # 112 triplets * 3 bytes
+
+
+def _load_type_effectiveness_from_rom(rom_data):
+    """Read the type effectiveness table from ROM at runtime.
+    Returns dict mapping (atk_type_idx, def_type_idx) -> multiplier_code."""
+    table = {}
+    off = OFFSET_TYPE_EFFECTIVENESS
+    end = OFFSET_TYPE_EFFECTIVENESS + TYPE_EFFECTIVENESS_SIZE
+    while off < end:
+        atk = rom_data[off]
+        defe = rom_data[off + 1]
+        mult = rom_data[off + 2]
+        if atk == 0xFF and defe == 0xFF:
+            break
+        table[(atk, defe)] = mult
+        off += 3
+    return table
+
+
+# Lazy-loaded from ROM on first use
+_TYPE_EFFECTIVENESS = None
+
+
+def get_type_multiplier(move_type_name, def_type1_name, def_type2_name=None, rom_data=None):
+    """Look up the combined type effectiveness multiplier for a move against a defender.
+    Returns (multiplier_float, message) where message is 'super', 'weak', 'immune', or ''."""
+    global _TYPE_EFFECTIVENESS
+    if _TYPE_EFFECTIVENESS is None:
+        if rom_data is not None:
+            _TYPE_EFFECTIVENESS = _load_type_effectiveness_from_rom(rom_data)
+        else:
+            # Fallback: all neutral
+            return 1.0, ""
+
+    atk_idx = TYPE_NAMES.index(move_type_name) if move_type_name in TYPE_NAMES else 0
+    def1_idx = TYPE_NAMES.index(def_type1_name) if def_type1_name in TYPE_NAMES else 0
+    def2_idx = TYPE_NAMES.index(def_type2_name) if def_type2_name in TYPE_NAMES else def1_idx
+
+    m1 = _TYPE_EFFECTIVENESS.get((atk_idx, def1_idx), TYPE_MUL_NORMAL)
+    m2 = _TYPE_EFFECTIVENESS.get((atk_idx, def2_idx), TYPE_MUL_NORMAL) if def2_idx != def1_idx else TYPE_MUL_NORMAL
+
+    combined = m1 * m2
+    if combined == 0:
+        return 0.0, "immune"
+    elif combined < 100:
+        return combined / 100.0, "weak"
+    elif combined > 100:
+        return combined / 100.0, "super"
+    return 1.0, ""
+
 
 class RomReader:
     """Reads game data from a GBA ROM file."""

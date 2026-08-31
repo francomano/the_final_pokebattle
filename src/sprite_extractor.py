@@ -12,13 +12,24 @@ import sys
 # ---------- ROM offsets (Fire Red US 1.0) -----------------------------------
 OFFSET_FRONT_PICS = 0x2350AC    # 8 bytes per species (ptr, size_tag)
 OFFSET_BACK_PICS = 0x235E54     # 8 bytes per species
-OFFSET_PALETTES = 0x23730C      # 8 bytes per species (ptr, tag)
+OFFSET_PALETTES = 0x23730C      # creature palettes (8 bytes per species)
+OFFSET_TRAINER_PALETTES = 0x239A1C  # trainer front pic palettes (8 bytes per trainer)
 OFFSET_SHINY_PALS = 0x2385CC    # shiny palettes
 OFFSET_TILESET_HDR = 0x2D4A94   # primary outdoor tileset header
 OFFSET_OW_SPRITES = 0x39FDB0    # overworld sprite table (approximate)
+OFFSET_TRAINER_SPRITES = 0x23957C  # trainer front pic table (148 entries)
 
 NUM_SPECIES = 412
 SPRITE_SIZE_4BPP = 2048         # 64x64 pixels at 4bpp
+
+TRAINER_FRONT_PICS = {
+    "red": 135,
+    "leaf": 136,
+    "brock": 116,
+    "blue": 125,
+    "rival_early": 106,
+    "rival_late": 124,
+}
 SPRITE_WH = 64                  # sprite width/height in pixels
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -264,6 +275,57 @@ class SpriteExtractor:
             return png_path
         return self.extract_creature_sprite(species_id)
 
+    def extract_trainer_front_pics(self):
+        """Extract trainer front pic sprites from ROM for HUD portraits."""
+        out_dir = os.path.join(BASE_DIR, "assets")
+        os.makedirs(out_dir, exist_ok=True)
+        for name, idx in TRAINER_FRONT_PICS.items():
+            out_path = os.path.join(out_dir, f"trainer_{name}.png")
+            if os.path.exists(out_path):
+                continue
+            sp_off = OFFSET_TRAINER_SPRITES + idx * 8
+            pal_off = OFFSET_TRAINER_PALETTES + idx * 8
+            sprite_ptr = self._read_ptr(sp_off)
+            sprite_data = decompress_lz77(self.rom, sprite_ptr)
+            pal_ptr = self._read_ptr(pal_off)
+            pal_data = decompress_lz77(self.rom, pal_ptr)
+            if sprite_data and pal_data:
+                palette = parse_gba_palette(pal_data)
+                pixels = decode_4bpp_sprite(sprite_data, 64, 64, palette)
+                _write_png(out_path, pixels, 64, 64)
+
+    def extract_npc_overworld_sprites(self):
+        """Extract NPC overworld sprites (hiker, scientist, etc.) from the ROM.
+
+        Each NPC is stored as 10 raw 4bpp frames of 16x32 pixels (256 bytes each).
+        Frame 0 = idle facing south. Palette is read via _palette_at() from the ROM.
+        """
+        # NPC sprite data offsets (frame 0 raw 4bpp) from gObjectEventGraphicsInfoPointers
+        # Table base: 0x39FDB0, each entry is 4-byte pointer to ObjectEventGraphicsInfo struct
+        # .images field at struct offset +28, first entry in images table = frame 0
+        NPC_OFFSETS = {
+            "npc_boy":       0x36F9A8,
+            "npc_girl":      0x379FA8,
+            "npc_oldman":    0x37FA28,
+            "npc_hiker":     0x386028,
+            "npc_scientist": 0x380E28,
+            "npc_fisher":    0x383528,
+            "npc_brock":     0x36C928,
+            "npc_lance":     0x37C928,
+        }
+        PAL_OFFSET = 0x36D888  # npc_white.gbapal (tag 0x1106)
+
+        out_dir = os.path.join(BASE_DIR, "assets")
+        os.makedirs(out_dir, exist_ok=True)
+
+        pal = self._palette_at(PAL_OFFSET)
+
+        for name, sheet_off in NPC_OFFSETS.items():
+            out_path = os.path.join(out_dir, f"{name}.png")
+            if os.path.exists(out_path):
+                continue
+            pixels = self._decode_ow_frame(sheet_off, 0, pal)
+            _write_png(out_path, pixels, 16, 32)
 
     def extract_player_sprites(self):
         """Extract the three playable overworld sprites from the ROM.

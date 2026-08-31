@@ -485,30 +485,40 @@ def draw_map(surface, session, assets, camera, rock_break_anim=None):
 
 
 def draw_ai(surface, session, assets, camera):
-    # IA Blue visibile solo se sulla stessa mappa del player
+    # IA Blue/Brock visible only on same map as player
     if not hasattr(session, "ai_map_key") or session.ai_map_key != session.current_map_key:
         return
     if not session.opponent:
         return
     opp_char = session.characters.get(session.opponent.character_id, {})
     prefix = opp_char.get("sprite_prefix", "player_blue")
-    assets.load_player(prefix)
     # usa direzione IA
     direction = getattr(session, "ai_direction", "down")
     layout = session.map_data.get(session.ai_map_key, {}).get("layout", [])
     tile = layout[session.ai_y][session.ai_x] if (
         0 <= session.ai_y < len(layout)
-        and 0 <= session.ai_x < len(layout[session.ai_y])
+        and session.ai_x < len(layout[session.ai_y])
     ) else None
-    if getattr(session, "ai_has_surf", False) and tile in ("w", "B"):
-        surf_frame = assets.surf_frame(prefix, direction, mount=False)
-        if surf_frame:
-            sx, sy = camera.to_screen(session.ai_x * TILE_SIZE, session.ai_y * TILE_SIZE)
-            surface.blit(surf_frame, (sx, sy - TILE_SIZE))
-            return
-    frame = assets.player_frame(prefix, direction, 0)
+    # Try player-style directional sprites first (for "player_blue", "player_red", etc.)
+    frame = None
+    if prefix.startswith("player_"):
+        assets.load_player(prefix)
+        if getattr(session, "ai_has_surf", False) and tile in ("w", "B"):
+            surf_frame = assets.surf_frame(prefix, direction, mount=False)
+            if surf_frame:
+                sx, sy = camera.to_screen(session.ai_x * TILE_SIZE, session.ai_y * TILE_SIZE)
+                surface.blit(surf_frame, (sx, sy - TILE_SIZE))
+                return
+        frame = assets.player_frame(prefix, direction, 0)
+        if not frame:
+            frame = assets.player_frame(prefix, "down", 0)
+    # Fallback: use NPC single-frame sprite (for "npc_brock", etc.)
     if not frame:
-        frame = assets.player_frame(prefix, "down", 0)
+        frame = assets.get_npc_sprite(prefix)
+        # Force reload if not found yet
+        if not frame and hasattr(assets, '_load_npc'):
+            assets._load_npc()
+            frame = assets.get_npc_sprite(prefix)
     if frame:
         sx, sy = camera.to_screen(session.ai_x * TILE_SIZE, session.ai_y * TILE_SIZE)
         surface.blit(frame, (sx, sy - TILE_SIZE))
@@ -560,12 +570,18 @@ def draw_player(surface, session, assets, camera, walker, surf_transition=None):
         if not frame:
             frame = assets.player_frame(prefix, direction, 0)
             rise = 0
+        if not frame:
+            frame = assets.get_npc_sprite(prefix)
         if frame:
             surface.blit(frame, (sx, sy - TILE_SIZE - rise))
             return
         # fall through to blue box fallback
     else:
         frame = assets.player_frame(prefix, direction, walker.anim_tick)
+        if not frame:
+            frame = assets.player_frame(prefix, "down", 0)
+        if not frame:
+            frame = assets.get_npc_sprite(prefix)
         if frame:
             surface.blit(frame, (sx, sy - TILE_SIZE))
             return
@@ -835,8 +851,15 @@ def draw_char_select(surface, font, characters, assets, cursor, char_ids):
         color = C_HIGHLIGHT if i == cursor else C_WHITE
         # player sprite
         prefix = ch.get("sprite_prefix", "player")
-        assets.load_player(prefix)
-        frame = assets.player_frame(prefix, "down", 0)
+        frame = None
+        if prefix.startswith("player_"):
+            assets.load_player(prefix)
+            frame = assets.player_frame(prefix, "down", 0)
+        if not frame:
+            frame = assets.get_npc_sprite(prefix)
+            if not frame and hasattr(assets, '_load_npc'):
+                assets._load_npc()
+                frame = assets.get_npc_sprite(prefix)
         if frame:
             surface.blit(frame, (25, y - 5))
         # name
@@ -1360,9 +1383,13 @@ def main():
                         (SCREEN_W//2 - 60, SCREEN_H//2 - 20))
             surface.blit(font.render("You defeated your rival!", True, C_WHITE),
                         (SCREEN_W//2 - 80, SCREEN_H//2 + 10))
-            if "blue" in session.unlocked:
-                surface.blit(font.render("BLUE unlocked as a playable character!", True, (120, 220, 120)),
-                            (SCREEN_W//2 - 150, SCREEN_H//2 + 40))
+            y_offset = 40
+            for char_id in ("blue", "brock"):
+                if char_id in session.unlocked:
+                    char_name = session.characters.get(char_id, {}).get("name", char_id.upper())
+                    surface.blit(font.render(f"{char_name} unlocked as a playable character!", True, (120, 220, 120)),
+                                (SCREEN_W//2 - 160, SCREEN_H//2 + y_offset))
+                    y_offset += 20
             surface.blit(font.render("Enter: new game | ESC: exit", True, C_GREY),
                         (SCREEN_W//2 - 100, SCREEN_H//2 + 70))
         elif session.state == "GAME_OVER":

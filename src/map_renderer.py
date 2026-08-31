@@ -46,6 +46,7 @@ TILE_MAP_DEFAULT = {
     'I': 0x00D,      # Item (grass)
     'E': 0x00D,      # Encounter grass
     'A': 0x001,      # Arena floor
+    'z': 0x009,      # Sand/desert floor (fallback for non-desert maps)
     'F': 0x079,      # Fence/wall (dark)
     'H': 0x05D,      # House wall center
     '[': 0x05C,      # House wall left
@@ -53,6 +54,45 @@ TILE_MAP_DEFAULT = {
     '^': 0x048,      # Roof left
     '~': 0x049,      # Roof center
     '`': 0x04A,      # Roof right
+}
+
+# Desert-specific tile map: uses real sand/rock metatiles from ROM
+TILE_MAP_DESERT = {
+    'T': 0x071,      # Mountain rock
+    'M': 0x073,      # Mountain wall border (dark face)
+    '.': 0x115,      # Desert sand floor
+    'z': 0x115,      # Desert sand floor (walkable)
+    'r': 0x0D9,      # Rocky ground
+    'R': 0x115,      # Breakable rock (object sprite overlay on sand)
+    'g': 0x115,      # Desert vegetation (sand, encounters)
+    'd': 0x0D9,      # Path/dirt (gravel)
+    'w': 0x12B,      # Water/swamp
+    'A': 0x0DC,      # Arena floor (earthy ground)
+    'F': 0x079,      # Fence/wall
+    'D': 0x03D,      # Door
+    'N': 0x003,      # Sign post
+    's': 0x115,      # Spawn point 1 (sand)
+    'S': 0x115,      # Spawn point 2 (sand)
+    'B': 0x0D9,      # Bridge/path
+    'W': 0x003,      # Sign
+    'E': 0x115,      # Encounter sand
+    'I': 0x115,      # Item on sand
+    'C': 0x115,      # Cuttable (render as sand)
+    'b': 0x0B7,      # Boulder (pushable, Strength HM)
+    'K': 0x0A9,      # Cave entrance (dark opening)
+    'Q': 0x0A8,      # Cave entrance left
+    'P': 0x0AA,      # Cave entrance right
+    'O': 0x0DC,      # Shelter interior floor
+    'm': 0x070,      # Mountain face (internal, different from border)
+    'c': 0x0D0,      # Rocky ground
+    'v': 0x0D6,      # Cliff edge on desert
+    'H': 0x05D,      # House wall center
+    'h': 0x05C,      # House wall left
+    'j': 0x05E,      # House wall right
+    '^': 0x048,      # Roof left
+    '~': 0x049,      # Roof center
+    '`': 0x04A,      # Roof right
+    'o': 0x001,      # Interior floor
 }
 
 TILE_MAP_CAVE = {
@@ -120,8 +160,9 @@ class MapRenderer:
         self.gen_num_tiles = len(self.gen_tile_data) // 32
         self.gen_meta = self.rom[GEN_MT_OFF:GEN_MT_OFF + 640 * 16]
         self.vf_meta = self.rom[VF_MT_OFF:VF_MT_OFF + 43 * 16]
-        # Load real cut-tree object sprite from pokefirered decomp (chr already reversata)
         self.cut_tree_sprite = self._load_cut_tree_sprite()
+        # Load rock smash object sprite (4 frames for animation)
+        self.rock_smash_frames = self._load_rock_smash_sprite()
 
     def _apply_night_to_pals(self, pals):
         dark = []
@@ -137,15 +178,9 @@ class MapRenderer:
         return dark
 
     def _load_cut_tree_sprite(self):
-        """Load the authentic CUT-tree object sprite (16x16) from pokefirered decomp.
-
-        The object is not a metatile but an OW sprite: graphics/object_events/pics/misc/cut_tree.png.
-        We read the PNG at runtime from ../pokefirered (no static asset) and also apply night tint.
-        """
-        # try multiple candidate locations (REPO root + project sibling)
+        """Load cut-tree object sprite from assets/ (generated from sprites.json at startup)."""
         candidates = [
-            os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "..", "pokefirered", "graphics", "object_events", "pics", "misc", "cut_tree.png"),
-            "/home/mf/Desktop/pokefirered/graphics/object_events/pics/misc/cut_tree.png",
+            os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "tile_cut_tree_0.png"),
         ]
         path = None
         for c in candidates:
@@ -156,14 +191,10 @@ class MapRenderer:
             return None
         try:
             img = Image.open(path).convert("RGBA")
-            # 64x16 sheet -> first 16x16 frame is idle tree
-            frame = img.crop((0, 0, 16, 16))
             if NIGHT_MODE:
-                # darken the sprite to match night lighting
-                # per-pixel multiply
-                px = frame.load()
-                for y in range(frame.height):
-                    for x in range(frame.width):
+                px = img.load()
+                for y in range(img.height):
+                    for x in range(img.width):
                         r, g, b, a = px[x, y]
                         if a == 0:
                             continue
@@ -171,9 +202,33 @@ class MapRenderer:
                         ng = int(g * NIGHT_G)
                         nb = int(min(255, b * NIGHT_B + NIGHT_B_ADD))
                         px[x, y] = (nr, ng, nb, a)
-            return frame
+            return img
         except Exception:
             return None
+
+    def _load_rock_smash_sprite(self):
+        """Load rock smash object sprite frames from assets/ (generated from sprites.json)."""
+        frames = []
+        for i in range(4):
+            path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", f"tile_rock_smash_{i}.png")
+            if os.path.exists(path):
+                try:
+                    img = Image.open(path).convert("RGBA")
+                    if NIGHT_MODE:
+                        px = img.load()
+                        for y in range(img.height):
+                            for x in range(img.width):
+                                r, g, b, a = px[x, y]
+                                if a == 0:
+                                    continue
+                                nr = int(r * NIGHT_R)
+                                ng = int(g * NIGHT_G)
+                                nb = int(min(255, b * NIGHT_B + NIGHT_B_ADD))
+                                px[x, y] = (nr, ng, nb, a)
+                    frames.append(img)
+                except Exception:
+                    pass
+        return frames if frames else None
 
     def _load_palettes(self, offset, count=16):
         pals = []
@@ -292,6 +347,8 @@ class MapRenderer:
             tile_map = {**TILE_MAP_DEFAULT, **TILE_MAP_CAVE}
         elif 'house' in map_key:
             tile_map = {**TILE_MAP_DEFAULT, **TILE_MAP_HOUSE}
+        elif 'desert' in map_key or 'rock' in map_key:
+            tile_map = {**TILE_MAP_DEFAULT, **TILE_MAP_DESERT}
         else:
             tile_map = TILE_MAP_DEFAULT
 
@@ -318,6 +375,9 @@ class MapRenderer:
                 if ch == 'C' and getattr(self, 'cut_tree_sprite', None) is not None:
                     # Center 16x16 object sprite on the 16x16 metatile (object is exactly 16x16)
                     bg.paste(self.cut_tree_sprite, (c * 16, r * 16), self.cut_tree_sprite)
+                elif ch == 'R' and getattr(self, 'rock_smash_frames', None) is not None:
+                    # Breakable rock: overlay first frame (idle rock) on sand
+                    bg.paste(self.rock_smash_frames[0], (c * 16, r * 16), self.rock_smash_frames[0])
 
         # Night post-process: slight additional vignette / dark overlay for forest maps
         if NIGHT_MODE:
@@ -336,13 +396,16 @@ class MapRenderer:
 
         count = 0
         for map_key, map_data in maps.items():
-            bg_name = f"{map_key}_rendered.png"
-            out_path = os.path.join(output_dir, bg_name)
+            bg_path = map_data.get("background", "")
+            if not bg_path:
+                continue
+            out_path = os.path.join(os.path.dirname(output_dir), bg_path)
             if os.path.exists(out_path):
                 continue
             layout = map_data.get("layout", [])
             if not layout:
                 continue
+            os.makedirs(os.path.dirname(out_path), exist_ok=True)
             if self.render_map(map_key, layout, out_path):
                 count += 1
 

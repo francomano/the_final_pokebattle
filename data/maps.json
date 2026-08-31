@@ -816,12 +816,12 @@
       "MMMMMFAAAAAAAAAAAAAAAAAAFMMMMM",
       "MMMMMFFFFFFFFFAFFFFFFFFFFMMMMM",
       "MMzzzzzzzzzzzzdzzzzzzzzdMMMMMM",
-      "MMzzgggzzzzzzzzRzzzzzzzdMMMMMM",
-      "MMzzgggzzzzzzzzRzzzzzzzRMMMMMM",
+      "MMzzgggzzzzzzzdRzzzzzzzdMMMMMM",
+      "MMzzgggzzIzzzzRzzzzzzzRMMMMMM",
       "MMzzzzzzzzzzzzzzzzzzRzzdMMMMMM",
-      "MMzzzzzzgggzzzzzzzzzzzzdMMMMMM",
+      "MMzzzzzzgggIzzzzzzzzzzzdMMMMMM",
       "MdzzzzzzgggzzzzzzzzzzzzzMMMMMM",
-      "MddddMMMMMMMMMMMMMMMMMMMMMMMMM"
+      "MddddddddMMMMMMMMMMMMMMMMMMMMM"
     ],
     "encounter_tiles": [
       "z"
@@ -902,7 +902,7 @@
         "name": "Desert Explorer",
         "sprite": "npc_oldman",
         "dialogue": "Spaccaroccia! You need it to break rocks...",
-        "gift": "rock_smash"
+        "gives": "rock_smash"
       },
       {
         "x": 14,
@@ -914,13 +914,13 @@
     ],
     "items": [
       {
-        "x": 15,
+        "x": 11,
         "y": 19,
         "item": "potion",
         "name": "Potion"
       },
       {
-        "x": 6,
+        "x": 9,
         "y": 17,
         "item": "pokeball",
         "name": "Pokeball"
@@ -958,6 +958,7 @@
       "F",
       "f",
       "g",
+      "I",
       "K",
       "O"
     ],
@@ -1111,7 +1112,7 @@
     ],
     "items": [
       {
-        "x": 15,
+        "x": 14,
         "y": 11,
         "item": "potion",
         "name": "Potion"
@@ -1230,7 +1231,7 @@
         "name": "Blaine",
         "sprite": "npc_scientist",
         "dialogue": "I used to run the Cinnabar Gym. Take this Pokemon!",
-        "gift": "dratini"
+        "gives": "dratini"
       },
       {
         "x": 5,
@@ -1238,13 +1239,13 @@
         "name": "Strength Guru",
         "sprite": "npc_hiker",
         "dialogue": "You look strong! Take this HM!",
-        "gift": "strength"
+        "gives": "strength"
       }
     ],
     "items": [
       {
         "x": 5,
-        "y": 9,
+        "y": 2,
         "item": "rare_candy",
         "quantity": 2
       }
