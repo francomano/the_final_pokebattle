@@ -86,13 +86,13 @@ TILE_MAP_DESERT = {
     'm': 0x070,      # Mountain face (internal, different from border)
     'c': 0x0D0,      # Rocky ground
     'v': 0x0D6,      # Cliff edge on desert
-    'H': 0x05D,      # House wall center
-    'h': 0x05C,      # House wall left
-    'j': 0x05E,      # House wall right
-    '^': 0x048,      # Roof left
-    '~': 0x049,      # Roof center
-    '`': 0x04A,      # Roof right
-    'o': 0x001,      # Interior floor
+    'H': 0x05D,      # House wall center (same as forest house)
+    'h': 0x05C,      # House wall left (same as forest house)
+    'j': 0x05E,      # House wall right (same as forest house)
+    '^': 0x048,      # Roof left (brown)
+    '~': 0x049,      # Roof center (brown)
+    '`': 0x04A,      # Roof right (brown)
+    'o': 0x070,      # Interior floor
 }
 
 TILE_MAP_CAVE = {
@@ -107,11 +107,14 @@ TILE_MAP_CAVE = {
 
 TILE_MAP_HOUSE = {
     'T': 0x03C,      # Interior wall
+    'M': 0x03C,      # Interior wall (alias for market)
     '.': 0x001,      # Floor
+    'o': 0x001,      # Floor (alias)
     'W': 0x003,      # Sign/bookshelf
     'N': 0x003,      # Sign post (with collision)
     'D': 0x03D,      # Door
     'd': 0x001,      # Floor
+    'I': 0x001,      # Item (on floor)
 }
 
 
@@ -345,7 +348,7 @@ class MapRenderer:
         """Render a single map layout to a PNG file."""
         if 'cave' in map_key:
             tile_map = {**TILE_MAP_DEFAULT, **TILE_MAP_CAVE}
-        elif 'house' in map_key:
+        elif 'house' in map_key or 'market' in map_key:
             tile_map = {**TILE_MAP_DEFAULT, **TILE_MAP_HOUSE}
         elif 'desert' in map_key or 'rock' in map_key:
             tile_map = {**TILE_MAP_DEFAULT, **TILE_MAP_DESERT}

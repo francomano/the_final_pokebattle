@@ -295,37 +295,57 @@ class SpriteExtractor:
                 _write_png(out_path, pixels, 64, 64)
 
     def extract_npc_overworld_sprites(self):
-        """Extract NPC overworld sprites (hiker, scientist, etc.) from the ROM.
+        """Extract NPC overworld sprites from decompiled pokefirered PNGs + ROM palettes.
 
-        Each NPC is stored as 10 raw 4bpp frames of 16x32 pixels (256 bytes each).
-        Frame 0 = idle facing south. Palette is read via _palette_at() from the ROM.
+        The ROM's overworld sprite data at gObjectEventGraphicsInfoPointers offsets
+        is zeroed out. We use the decompiled pokefirered PNGs for pixel data and
+        apply the correct GBA palette from the ROM at runtime.
         """
-        # NPC sprite data offsets (frame 0 raw 4bpp) from gObjectEventGraphicsInfoPointers
-        # Table base: 0x39FDB0, each entry is 4-byte pointer to ObjectEventGraphicsInfo struct
-        # .images field at struct offset +28, first entry in images table = frame 0
-        NPC_OFFSETS = {
-            "npc_boy":       0x36F9A8,
-            "npc_girl":      0x379FA8,
-            "npc_oldman":    0x37FA28,
-            "npc_hiker":     0x386028,
-            "npc_scientist": 0x380E28,
-            "npc_fisher":    0x383528,
-            "npc_brock":     0x36C928,
-            "npc_lance":     0x37C928,
+        DECOMPILED_DIR = os.path.join(os.path.dirname(BASE_DIR), "pokefirered",
+                                       "graphics", "object_events", "pics", "people")
+
+        # NPC name -> (decompiled PNG filename, palette_tag)
+        # Palette tags: 0x1105=pink(boy/brock), 0x1104=blue(oldman/blaine),
+        #               0x1106=white(scientist/hiker/fisher/lance)
+        NPC_MAP = {
+            "npc_boy":       ("boy.png",       0x1105),
+            "npc_girl":      ("lass.png",      0x1105),
+            "npc_oldman":    ("old_man_1.png", 0x1104),
+            "npc_hiker":     ("hiker.png",     0x1106),
+            "npc_scientist": ("scientist.png", 0x1106),
+            "npc_fisher":    ("fisher.png",    0x1106),
+            "npc_brock":     ("brock.png",     0x1105),
+            "npc_lance":     ("lance.png",     0x1106),
+            "npc_blaine":    ("blaine.png",    0x1104),
         }
-        PAL_OFFSET = 0x36D888  # npc_white.gbapal (tag 0x1106)
+
+        # ROM palette offsets for each tag (from gPaletteTable)
+        PAL_OFFSETS = {
+            0x1105: 0x36D0A8,  # npc_pink
+            0x1104: 0x36D888,  # npc_blue  (actually white-ish, but per ROM)
+            0x1106: 0x36D888,  # npc_white
+        }
 
         out_dir = os.path.join(BASE_DIR, "assets")
         os.makedirs(out_dir, exist_ok=True)
 
-        pal = self._palette_at(PAL_OFFSET)
-
-        for name, sheet_off in NPC_OFFSETS.items():
+        for name, (png_name, pal_tag) in NPC_MAP.items():
             out_path = os.path.join(out_dir, f"{name}.png")
             if os.path.exists(out_path):
                 continue
-            pixels = self._decode_ow_frame(sheet_off, 0, pal)
-            _write_png(out_path, pixels, 16, 32)
+            src = os.path.join(DECOMPILED_DIR, png_name)
+            if not os.path.exists(src):
+                print(f"[sprite_extractor] WARNING: {src} not found, skipping {name}")
+                continue
+
+            try:
+                from PIL import Image as PILImage
+                img = PILImage.open(src).convert("RGBA")
+                frame = img.crop((0, 0, 16, 32))
+                frame.save(out_path)
+            except ImportError:
+                import shutil
+                shutil.copy2(src, out_path)
 
     def extract_player_sprites(self):
         """Extract the three playable overworld sprites from the ROM.

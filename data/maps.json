@@ -665,27 +665,6 @@
     },
     "portals": [
       {
-        "x": 1,
-        "y": 0,
-        "dest_map": "forest_north",
-        "dest_x": 13,
-        "dest_y": 18
-      },
-      {
-        "x": 2,
-        "y": 0,
-        "dest_map": "forest_north",
-        "dest_x": 14,
-        "dest_y": 18
-      },
-      {
-        "x": 3,
-        "y": 0,
-        "dest_map": "forest_north",
-        "dest_x": 15,
-        "dest_y": 18
-      },
-      {
         "x": 7,
         "y": 9,
         "dest_map": "forest_north",
@@ -711,7 +690,7 @@
     "layout": [
       "TTTTTTTTT",
       "T.......T",
-      "T...I...T",
+      "T.......T",
       "T.......T",
       "T.......T",
       "T.......T",
@@ -724,7 +703,7 @@
         "x": 4,
         "y": 2,
         "item": "pokeball",
-        "name": "Poké Ball"
+        "name": "Pok\u00e9 Ball"
       }
     ],
     "items_on_talk": [],
@@ -796,7 +775,7 @@
     ],
     "spawn_desert": [
       22,
-      17
+      16
     ],
     "background": "rocky_desert/rock_desert_rendered.png",
     "layout": [
@@ -817,7 +796,7 @@
       "MMMMMFFFFFFFFFAFFFFFFFFFFMMMMM",
       "MMzzzzzzzzzzzzdzzzzzzzzdMMMMMM",
       "MMzzgggzzzzzzzdRzzzzzzzdMMMMMM",
-      "MMzzgggzzIzzzzRzzzzzzzRMMMMMM",
+      "MMzzgggzzIzzzzRzzzzzzzzRzMMMMM",
       "MMzzzzzzzzzzzzzzzzzzRzzdMMMMMM",
       "MMzzzzzzgggIzzzzzzzzzzzdMMMMMM",
       "MdzzzzzzgggzzzzzzzzzzzzzMMMMMM",
@@ -975,7 +954,7 @@
         "y": 21,
         "dest_map": "rock_desert_arena",
         "dest_x": 9,
-        "dest_y": 14
+        "dest_y": 15
       }
     ]
   },
@@ -996,7 +975,7 @@
       "MddddddddddM",
       "MddddddddddM",
       "MddddddddddM",
-      "MMMMMdMMMMMM"
+      "MMMMMEMMMMMM"
     ],
     "encounter_tiles": [],
     "encounter_rate": 0,
@@ -1004,7 +983,9 @@
       ".",
       "d",
       "D",
-      "N"
+      "K",
+      "N",
+      "E"
     ],
     "npcs": [
       {
@@ -1022,7 +1003,7 @@
         "y": 7,
         "dest_map": "rock_desert",
         "dest_x": 14,
-        "dest_y": 4
+        "dest_y": 3
       }
     ]
   },
@@ -1036,7 +1017,7 @@
     ],
     "background": "rocky_desert/rock_desert_arena_rendered.png",
     "layout": [
-      "MMMMMMMMMMMMMMMMMMMM",
+      "MMMMMMMMMddMMMMMMMMM",
       "MmddddddddddddddddmM",
       "MmdddddddddddddddgmM",
       "MmdzzRddddMddRRzdmmM",
@@ -1051,7 +1032,7 @@
       "MmdzzRddddMddRRzdmmM",
       "MmgdddddddMdddddddmM",
       "MmddddddddddddddddmM",
-      "MMMMMMMMMMMMMMMMMMMM"
+      "MMMMMMMMMddMMMMMMMMM"
     ],
     "encounter_tiles": [
       "z",
@@ -1165,18 +1146,18 @@
     ],
     "portals": [
       {
-        "x": 17,
-        "y": 2,
+        "x": 9,
+        "y": 15,
         "dest_map": "rock_desert",
         "dest_x": 1,
-        "dest_y": 20
+        "dest_y": 21
       },
       {
-        "x": 2,
-        "y": 13,
+        "x": 9,
+        "y": 0,
         "dest_map": "rock_desert_shelter",
-        "dest_x": 17,
-        "dest_y": 14
+        "dest_x": 15,
+        "dest_y": 15
       }
     ]
   },
@@ -1190,49 +1171,30 @@
     ],
     "background": "rocky_desert/rock_desert_shelter_rendered.png",
     "layout": [
-      "MMMMMMMMMMMMMMMMMMMM",
-      "Mmh^~~~^jdmmmmmmmmmM",
-      "MmhooIoojdmmmmmmmmmM",
-      "MmhDoooDjddmmmmmmmmM",
-      "Mmh^^^^^jdddmmmmmmmM",
+      "MMMMMMMMMddMMMMMMMMM",
+      "Mmh^^^jmmmmmmmmmmmmM",
+      "MmhHHHHjmmmmmmmmmmmM",
+      "MmhHHHHjmmmmmmmmmmmM",
+      "MmhHDDHjmmmmmmmmmmmM",
+      "MmmmmmdDjmmmmmmmmmmM",
       "MmmmmdddddmmmmmmmmmM",
-      "MmmmddddmmmmmmmmmmmM",
-      "MmmmdddmmmmmmmmmmmmM",
-      "MmmmdddmmmmmmmmmmmmM",
-      "MmmmddbmmmmmmmmmmmmM",
-      "MmmmdddmmmmmmmmmmmmM",
-      "MmmmddddmmmmmmmmmmmM",
-      "MmmdddddddddddddddmM",
-      "MmddddddddddddddddmM",
-      "MmddddddddddddddddmM",
-      "MMMMMMMMMMMMMMMMMMMM"
+      "MmmmmdddmmmmmmmmmmmM",
+      "MmmmmdddmmmmmmmmmmmM",
+      "MmmmmdddmmmmmmmmmmmM",
+      "MmmmmdddmmmmmmmmmmmM",
+      "MmmmmdddmmmmmmmmmmmM",
+      "MmmmggdddddddgggddmM",
+      "MmgggdddddddddgggdmM",
+      "MmdgggdddddddgggddmM",
+      "MMMMMMMMMMMMMMMdMMMM"
     ],
     "encounter_tiles": [
       "g"
     ],
     "encounter_rate": 8,
     "breakable_rocks": [],
-    "boulders": [
-      {
-        "x": 10,
-        "y": 5,
-        "pushable": true,
-        "requires": "strength",
-        "pushes_to": {
-          "x": 10,
-          "y": 6
-        }
-      }
-    ],
+    "boulders": [],
     "npcs": [
-      {
-        "x": 5,
-        "y": 2,
-        "name": "Blaine",
-        "sprite": "npc_scientist",
-        "dialogue": "I used to run the Cinnabar Gym. Take this Pokemon!",
-        "gives": "dratini"
-      },
       {
         "x": 5,
         "y": 11,
@@ -1242,14 +1204,8 @@
         "gives": "strength"
       }
     ],
-    "items": [
-      {
-        "x": 5,
-        "y": 2,
-        "item": "rare_candy",
-        "quantity": 2
-      }
-    ],
+    "items": [],
+    "items_on_talk": [],
     "signs": [],
     "wild_creatures": [
       {
@@ -1281,15 +1237,23 @@
       "z",
       "A",
       "o",
-      "O"
+      "O",
+      "m"
     ],
     "portals": [
       {
-        "x": 17,
-        "y": 14,
+        "x": 15,
+        "y": 15,
         "dest_map": "rock_desert_arena",
-        "dest_x": 2,
-        "dest_y": 13
+        "dest_x": 9,
+        "dest_y": 1
+      },
+      {
+        "x": 4,
+        "y": 4,
+        "dest_map": "pokemon_market",
+        "dest_x": 4,
+        "dest_y": 5
       }
     ],
     "breakable_boulders": [
@@ -1298,6 +1262,50 @@
         "y": 11,
         "requires": "strength"
       }
+    ]
+  },
+  "pokemon_market": {
+    "name": "Pokemon Market",
+    "width": 9,
+    "height": 7,
+    "spawn": [
+      4,
+      5
+    ],
+    "walkable_tiles": [
+      "D",
+      "I",
+      "i",
+      "d",
+      "W",
+      "f",
+      "."
+    ],
+    "encounter_tiles": [],
+    "wild_creatures": [],
+    "portals": [],
+    "npcs": [
+      {
+        "x": 4,
+        "y": 2,
+        "name": "Blaine",
+        "sprite": "npc_blaine",
+        "dialogue": "Welcome to the Pokemon Market! Take this Pokemon!",
+        "gives": "ponyta"
+      }
+    ],
+    "dynamic_exit": {
+      "x": 4,
+      "y": 6
+    },
+    "layout": [
+      "TTTTTTTTT",
+      "T.......T",
+      "T.......T",
+      "T.......T",
+      "T.......T",
+      "T.......T",
+      "T...D...T"
     ]
   }
 }

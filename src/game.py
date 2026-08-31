@@ -568,7 +568,8 @@ class GameSession:
         self.player = PlayerState(character_id, starter, char_data.get("starting_items"))
 
         if map_key and map_key == "rock_desert":
-            self.current_map_key = "rock_desert"
+            spawn_maps_desert = ["rock_desert", "rock_desert_shelter"]
+            self.current_map_key = self.rng.choice(spawn_maps_desert)
         elif map_key and map_key == "darkwood":
             spawn_maps = ["forest_south", "forest_north"]
             self.current_map_key = self.rng.choice(spawn_maps)
@@ -606,29 +607,43 @@ class GameSession:
 
         if is_desert:
             self.ai_route = "desert"
-            # Both player and Brock start in the same map so the user can see Brock
-            self.current_map_key = "rock_desert"
             current = self.map_data[self.current_map_key]
-            sp_desert = current.get("spawn_desert", [22, 17])
-            self.player.x, self.player.y = sp_desert[0], sp_desert[1]
-            # Brock nearby player in desert
-            self.ai_map_key = "rock_desert"
-            self.ai_x, self.ai_y = 8, 16
+            spawn = current.get("spawn", current.get("spawn_desert", [22, 17]))
+            self.player.x, self.player.y = spawn[0], spawn[1]
             self.ai_spawn_side = "east"
-            # Brock waypoints - training through encounter tiles then to arena
-            self.ai_waypoints = [
-                ("rock_desert", 8, 16),
-                ("rock_desert", 9, 16),
-                ("rock_desert", 7, 19),
-                ("rock_desert", 8, 19),
-                ("rock_desert", 9, 19),
-                ("rock_desert", 22, 15),
-                ("rock_desert", 14, 15),
-                ("rock_desert", 1, 21),
-                ("rock_desert_arena", 17, 2),
-                ("rock_desert_arena", 8, 7),
-            ]
-            self.ai_log = [f"Brock è partito da {current['name']}"]
+            # Brock spawns in the opposite area from player
+            if self.current_map_key == "rock_desert":
+                # Player in desert -> Brock in shelter, trains on g tiles -> arena -> center
+                self.ai_map_key = "rock_desert_shelter"
+                self.ai_x, self.ai_y = 5, 6
+                self.ai_waypoints = [
+                    ("rock_desert_shelter", 4, 13),
+                    ("rock_desert_shelter", 14, 13),
+                    ("rock_desert_shelter", 4, 12),
+                    ("rock_desert_shelter", 14, 12),
+                    ("rock_desert_arena", 8, 4),
+                    ("rock_desert_arena", 11, 4),
+                    ("rock_desert_arena", 8, 11),
+                    ("rock_desert_arena", 11, 11),
+                    ("rock_desert_arena", 10, 7),
+                ]
+                self.ai_log = [f"Brock è partito da {self.map_data['rock_desert_shelter']['name']}"]
+            else:
+                # Player in shelter -> Brock in desert, trains on z tiles -> arena -> center
+                self.ai_map_key = "rock_desert"
+                self.ai_x, self.ai_y = 22, 16
+                self.ai_waypoints = [
+                    ("rock_desert", 19, 15),
+                    ("rock_desert", 22, 15),
+                    ("rock_desert", 19, 17),
+                    ("rock_desert", 22, 17),
+                    ("rock_desert_arena", 8, 4),
+                    ("rock_desert_arena", 11, 4),
+                    ("rock_desert_arena", 8, 11),
+                    ("rock_desert_arena", 11, 11),
+                    ("rock_desert_arena", 10, 7),
+                ]
+                self.ai_log = [f"Brock è partito da {self.map_data['rock_desert']['name']}"]
         elif self.current_map_key == "forest_south":
             # Player on forest_south -> Blue on forest_north -> training in grass -> area_central
             self.ai_map_key = "forest_north"
@@ -680,7 +695,7 @@ class GameSession:
         self.ai_tick = 0
         # Rival loops first N waypoints (grass training) until team is full
         rival_name = self.characters.get(self.opponent.character_id, {}).get("name", "Rival")
-        self.ai_training_end = 3  # spawn + 2 encounter tiles
+        self.ai_training_end = 4 if is_desert else 3  # desert: 4 local encounters, forest: 2
         self.ai_log = [f"{rival_name} è partito da {self.map_data[self.ai_map_key]['name']}"]
         self.ai_level_timer = 0
         # log iniziale team
@@ -1061,6 +1076,12 @@ class GameSession:
                                 result["received"] = "Dratini"
                             else:
                                 result["received"] = "Dratini (team full!)"
+                        elif gift == "ponyta":
+                            ponyta = make_creature_from_rom(77, 15, self.rom)
+                            if self.player.add_creature(ponyta):
+                                result["received"] = "Ponyta"
+                            else:
+                                result["received"] = "Ponyta (team full!)"
                         elif gift == "rock_smash":
                             self.player.inventory.obtain_hm("rock_smash")
                             result["received"] = "HM Spaccaroccia"
@@ -1394,6 +1415,15 @@ class GameSession:
                         res.append((portal["dest_map"], portal["dest_x"], portal["dest_y"]))
                         blocked=True; break
                 if blocked: continue
+                # dynamic_exit -> torna alla mappa precedente
+                dyn = data.get("dynamic_exit")
+                if dyn and nx == dyn["x"] and ny == dyn["y"]:
+                    prev_map = self.previous_map_key or map_key
+                    if prev_map in self.map_data:
+                        prev_spawn = self.map_data[prev_map].get("spawn", [10, 10])
+                        res.append((prev_map, prev_spawn[0], prev_spawn[1]))
+                    blocked = True
+                if blocked: continue
                 res.append((map_key,nx,ny))
         # portal da posizione attuale (se IA è su portal tile, può entrare anche senza muoversi? gestito sopra)
         return res
@@ -1472,8 +1502,13 @@ class GameSession:
         current = (self.ai_map_key, self.ai_x, self.ai_y)
         target = self.ai_waypoints[self.ai_waypoint_index]
         if current == target:
-            self.ai_waypoint_index = (self.ai_waypoint_index + 1) % len(self.ai_waypoints)
-            target = self.ai_waypoints[self.ai_waypoint_index]
+            if self.ai_waypoint_index < len(self.ai_waypoints) - 1:
+                self.ai_waypoint_index += 1
+                target = self.ai_waypoints[self.ai_waypoint_index]
+            else:
+                # Reached final destination (center) - stay there, just do post-move
+                self._ai_handle_post_move()
+                return
             if current == target:
                 return
 

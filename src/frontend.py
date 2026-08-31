@@ -138,7 +138,7 @@ class Assets:
 
     def _load_npc(self):
         self.npcs = {}
-        npc_files = ["npc_fisher", "npc_boy", "npc_girl", "npc_oldman", "npc_hiker", "npc_scientist", "npc_brock", "npc_lance"]
+        npc_files = ["npc_fisher", "npc_boy", "npc_girl", "npc_oldman", "npc_hiker", "npc_scientist", "npc_brock", "npc_lance", "npc_blaine"]
         for name in npc_files:
             s = self._img(os.path.join(ASSET_DIR, f"{name}.png"), (TILE_SIZE, TILE_SIZE * 2))
             if s:
@@ -455,10 +455,8 @@ def draw_map(surface, session, assets, camera, rock_break_anim=None):
         frame_idx = rock_break_anim["frame"]
         if assets.rock_smash_frames and frame_idx < len(assets.rock_smash_frames):
             frame = assets.rock_smash_frames[frame_idx]
-            # Convert PIL frame to pygame surface
-            frame_data = frame.tobytes()
-            frame_surf = pygame.image.fromstring(frame_data, (16, 16), "RGBA")
-            frame_surf = pygame.transform.scale(frame_surf, (TILE_SIZE, TILE_SIZE))
+            # frame is a pygame Surface - scale and blit
+            frame_surf = pygame.transform.scale(frame, (TILE_SIZE, TILE_SIZE))
             sx, sy = camera.to_screen(rock_break_anim["x"] * TILE_SIZE, rock_break_anim["y"] * TILE_SIZE)
             surface.blit(frame_surf, (sx, sy))
         # Update animation
@@ -467,6 +465,14 @@ def draw_map(surface, session, assets, camera, rock_break_anim=None):
             rock_break_anim["ticks"] = 0
             rock_break_anim["frame"] += 1
             if rock_break_anim["frame"] >= 4:  # Animation complete
+                # Replace rock tile in layout with sand
+                rx, ry = rock_break_anim["x"], rock_break_anim["y"]
+                layout = session.get_current_map().get("layout", [])
+                if 0 <= ry < len(layout) and 0 <= rx < len(layout[ry]):
+                    row_list = list(layout[ry])
+                    if row_list[rx] == 'R':
+                        row_list[rx] = 'z'
+                        layout[ry] = "".join(row_list)
                 rock_break_anim = None
     # Sandstorm effect for desert maps
     if session.current_map_key in ("rock_desert", "rock_desert_arena", "rock_desert_shelter"):
