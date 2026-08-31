@@ -30,3 +30,4 @@ data/*.bin
 
 # Rendered map output (regenerated from ROM + maps.json)
 output_maps/
+package-lock.json
