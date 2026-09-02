@@ -16,10 +16,10 @@
       "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
       "TT........NTTTTTTTTTTTTTTTTTTT",
       "TT.........TTTTTTTTTTTTTTTTTTT",
-      "TT..^~~~`..TTTTTTTTTTTTTTTTTTT",
-      "TT..[HHH].........ggggggggTTTT",
-      "TT..[HHH].........ggggggggTTTT",
-      "TT..[HDH]ddddddd..ggggggggTTTT",
+      "TT..qwert..TTTTTTTTTTTTTTTTTTT",
+      "TT..asfkl.........ggggggggTTTT",
+      "TT..xvuip.........ggggggggTTTT",
+      "TT..67D89ddddddd..ggggggggTTTT",
       "TT............dd..ggggggggTTTT",
       "TT............ddddddggggggTTTT",
       "TTTTTTTTTTT...dd..dddd..TTTTTT",
@@ -131,10 +131,10 @@
     "background": "forest/river_area_rendered.png",
     "layout": [
       "............Ndddd.............",
-      "..ggggggg.....dd......^~~~`...",
-      "..gggggggTT...dd......[HHH]...",
-      "..ggggggg.N..ddd......[HHH]...",
-      "..ggggggg.....dd.ddddd[HDH]...",
+      "..ggggggg.....dd......qwert...",
+      "..gggggggTT...dd......asfkl...",
+      "..ggggggg.N..ddd......xvuip...",
+      "..ggggggg.....dd.ddddd67D89...",
       "..ggggggg.....dd..............",
       "wwwwwwwwwwwwwwddwwwwwwwwwwwwww",
       "wwwwwwwwwwwwwwBBwwwwwwwwwwwwww",
@@ -273,8 +273,8 @@
     "background": "forest/forest_north_rendered.png",
     "layout": [
       "TTTTTTTTT............TTTTTTTTT",
-      "TTTTTTTTT.N..MMM.....TTTTTTTTT",
-      "TTTTTTTTT....MGM.....TTTTTTTTT",
+      "TTTTTTTTT.N..........TTTTTTTTT",
+      "TTTTTTTTT....QGP.....TTTTTTTTT",
       "TTTTTTTTT............TTTTTTTTT",
       "TTTggggggg...........gggggggTT",
       "TTTggggggg....Nd.....gggggggTT",
@@ -694,7 +694,7 @@
       "T.......T",
       "T.......T",
       "T.......T",
-      "T...D...T"
+      "T...o...T"
     ],
     "portals": [],
     "npcs": [],
@@ -714,6 +714,7 @@
       "d",
       "W",
       "f",
+      "o",
       "."
     ],
     "dynamic_exit": {
@@ -733,7 +734,7 @@
       "T.......T",
       "T.......T",
       "T.......T",
-      "T...D...T"
+      "T...o...T"
     ],
     "portals": [],
     "npcs": [
@@ -754,6 +755,7 @@
       "d",
       "W",
       "f",
+      "o",
       "."
     ],
     "dynamic_exit": {
@@ -795,9 +797,9 @@
       "MMMMMFAAAAAAAAAAAAAAAAAAFMMMMM",
       "MMMMMFFFFFFFFFAFFFFFFFFFFMMMMM",
       "MMzzzzzzzzzzzzdzzzzzzzzdMMMMMM",
-      "MMzzgggzzzzzzzdRzzzzzzzdMMMMMM",
-      "MMzzgggzzIzzzzRzzzzzzzzRzMMMMM",
-      "MMzzzzzzzzzzzzzzzzzzRzzdMMMMMM",
+      "MMzzgggzzzzzzzdzzzzzzzzdMMMMMM",
+      "MMzzgggzzIzzzzzzzzzzzzzzzMMMMM",
+      "MMzzzzzzzzzzzzzzzzzzzzzdMMMMMM",
       "MMzzzzzzgggIzzzzzzzzzzzdMMMMMM",
       "MdzzzzzzgggzzzzzzzzzzzzzMMMMMM",
       "MddddddddMMMMMMMMMMMMMMMMMMMMM"
@@ -1028,8 +1030,8 @@
       "MmddMFAAAAAAFMddddmM",
       "MmddMFAAAAAAFMddddmM",
       "MmddddddddMdddddddmM",
-      "MmdzRRzzggMggzzRRzmM",
-      "MmdzzRddddMddRRzdmmM",
+      "MmdzzzddggMggzzzzzmM",
+      "MmdzzzddddMddzzzdmmM",
       "MmgdddddddMdddddddmM",
       "MmddddddddddddddddmM",
       "MMMMMMMMMddMMMMMMMMM"
@@ -1072,7 +1074,7 @@
         "requires": "rock_smash"
       },
       {
-        "x": 14,
+        "x": 16,
         "y": 4,
         "requires": "rock_smash"
       },
@@ -1172,20 +1174,20 @@
     "background": "rocky_desert/rock_desert_shelter_rendered.png",
     "layout": [
       "MMMMMMMMMddMMMMMMMMM",
-      "Mmh^^^jmmmmmmmmmmmmM",
-      "MmhHHHHjmmmmmmmmmmmM",
-      "MmhHHHHjmmmmmmmmmmmM",
-      "MmhHDDHjmmmmmmmmmmmM",
-      "MmmmmmdDjmmmmmmmmmmM",
-      "MmmmmdddddmmmmmmmmmM",
-      "MmmmmdddmmmmmmmmmmmM",
-      "MmmmmdddmmmmmmmmmmmM",
-      "MmmmmdddmmmmmmmmmmmM",
-      "MmmmmdddmmmmmmmmmmmM",
-      "MmmmmdddmmmmmmmmmmmM",
-      "MmmmggdddddddgggddmM",
-      "MmgggdddddddddgggdmM",
-      "MmdgggdddddddgggddmM",
+      "MMqwert0MMMMMMMMMMMM",
+      "MMasfkl0MMMMMMMMMMMM",
+      "MMxvuip0MMMMMMMMMMMM",
+      "MM67D890MMMMMMMMMMMM",
+      "MMMMddMMMMMMMMMMMMMM",
+      "MMMMMdddddMMMMMMMMMM",
+      "MMMMMdddMMMMMMMMMMMM",
+      "MMMMMdddMMMMMMMMMMMM",
+      "MMMMMdddMMMMMMMMMMMM",
+      "MMMMMdddMMMMMMMMMMMM",
+      "MMMMMdddMMMMMMMMMMMM",
+      "MMMMggdddddddgggddMM",
+      "MMgggdddddddddgggdMM",
+      "MMdgggdddddddgggddMM",
       "MMMMMMMMMMMMMMMdMMMM"
     ],
     "encounter_tiles": [
@@ -1237,8 +1239,7 @@
       "z",
       "A",
       "o",
-      "O",
-      "m"
+      "O"
     ],
     "portals": [
       {
@@ -1268,6 +1269,7 @@
     "name": "Pokemon Market",
     "width": 9,
     "height": 7,
+    "background": "rocky_desert/pokemon_market_rendered.png",
     "spawn": [
       4,
       5

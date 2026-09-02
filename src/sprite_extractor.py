@@ -331,8 +331,6 @@ class SpriteExtractor:
 
         for name, (png_name, pal_tag) in NPC_MAP.items():
             out_path = os.path.join(out_dir, f"{name}.png")
-            if os.path.exists(out_path):
-                continue
             src = os.path.join(DECOMPILED_DIR, png_name)
             if not os.path.exists(src):
                 print(f"[sprite_extractor] WARNING: {src} not found, skipping {name}")
@@ -424,6 +422,35 @@ class SpriteExtractor:
             }
             for name, pixels in mapping.items():
                 _write_png(os.path.join(out_dir, name), pixels, 16, 32)
+        self.extract_surf_blob()
+
+    def extract_surf_blob(self):
+        """Extract FireRed's animated 32x32 Surf Pokémon/blob field effect.
+
+        The rider sheets contain only the trainer.  In game, the actual mount
+        is a separate field-effect sprite, so it must be extracted and drawn
+        beneath the rider independently.
+        """
+        base = 0x396B08
+        palette = self._palette_at(0x35B968)
+        out_dir = os.path.join(BASE_DIR, "assets")
+        for frame in range(6):
+            pixels = self._decode_ow_frame_32(base + frame * 0x200, palette)
+            _write_png(os.path.join(out_dir, f"surf_blob_{frame}.png"), pixels, 32, 32)
+
+    def _decode_ow_frame_32(self, offset, palette):
+        """Decode one raw 32x32 4bpp object frame from the ROM."""
+        pixels = [(0, 0, 0, 0)] * (32 * 32)
+        for ty in range(4):
+            for tx in range(4):
+                tile = offset + (ty * 4 + tx) * 32
+                for py in range(8):
+                    for px in range(0, 8, 2):
+                        byte = self.rom[tile + py * 4 + px // 2]
+                        x, y = tx * 8 + px, ty * 8 + py
+                        pixels[y * 32 + x] = palette[byte & 0x0F]
+                        pixels[y * 32 + x + 1] = palette[(byte >> 4) & 0x0F]
+        return pixels
 
     def _palette_at(self, offset):
         """Read a 16-color GBA RGB555 palette at a ROM file offset."""

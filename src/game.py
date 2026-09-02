@@ -727,7 +727,9 @@ class GameSession:
             return 'd'
         rock_id = f"{self.current_map_key}_rock_{x}_{y}"
         if rock_id in self.removed_rocks:
-            return 'O'
+            # All current breakable rocks stand on desert sand.  Returning
+            # sand keeps collision and the post-animation render in sync.
+            return 'z'
         layout = self.map_data[self.current_map_key]["layout"]
         if 0 <= y < len(layout) and 0 <= x < len(layout[y]):
             return layout[y][x]
@@ -1115,10 +1117,16 @@ class GameSession:
                 if rock_id in self.removed_rocks:
                     return {"nothing": True}
                 if self.player.inventory.has_hm("rock_smash"):
-                    active = self.player.active_creature()
-                    if active and any(m.name == "ROCK_SMASH" for m in active.moves):
-                        self.removed_rocks.add(rock_id)
-                        return {"rock_smash": True, "rock_x": rock["x"], "rock_y": rock["y"]}
+                    # A field move may be supplied by any conscious member of
+                    # the party; requiring the currently selected creature
+                    # made a legitimately taught HM appear unusable.
+                    if any(getattr(creature, "can_rock_smash", False)
+                           for creature in self.player.team):
+                        # The front end commits the removal only after the
+                        # breaking animation has played.  Removing it here
+                        # makes the first rendered animation frame show the
+                        # replacement terrain instead of the rock.
+                        return {"rock_smash": True, "rock_x": rock["x"], "rock_y": rock["y"], "rock_id": rock_id}
                     else:
                         return {"npc": True, "dialogue": "It's a big rock. If only I had Spaccaroccia...", "name": "Rock"}
                 else:

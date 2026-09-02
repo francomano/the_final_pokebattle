@@ -97,11 +97,13 @@ class Assets:
         self.tiles = {}
         self.players = {}   # prefix -> {direction -> [frame0, frame1, frame2]}
         self.surf = {}      # prefix -> {"ride": {dir->img}, "mount": {dir->img}}
+        self.surf_blob_frames = []
         self.creatures = {}
         self.rock_smash_frames = []  # 4 frames for rock break animation
         self._load_tiles()
         self._load_npc()
         self._load_rock_smash()
+        self._load_surf_blob()
 
     def _img(self, path, size=None):
         if not os.path.exists(path):
@@ -158,6 +160,22 @@ class Assets:
                 surf = self._img(path, (TILE_SIZE, TILE_SIZE))
                 if surf:
                     self.rock_smash_frames.append(surf)
+
+    def _load_surf_blob(self):
+        """Load the separate ROM field-effect shown under a Surf rider."""
+        self.surf_blob_frames = []
+        for i in range(6):
+            surf = self._img(os.path.join(ASSET_DIR, f"surf_blob_{i}.png"),
+                             (TILE_SIZE * 2, TILE_SIZE * 2))
+            if surf:
+                self.surf_blob_frames.append(surf)
+
+    def surf_blob_frame(self, direction, tick):
+        if not self.surf_blob_frames:
+            return None
+        pair = {"down": (0, 1), "up": (2, 3), "left": (4, 5), "right": (4, 5)}.get(direction, (0, 1))
+        frame = self.surf_blob_frames[pair[(tick // 24) % 2]]
+        return pygame.transform.flip(frame, True, False) if direction == "right" else frame
 
     def _load_trainer_faces(self):
         self.trainer_faces = {}
@@ -413,9 +431,30 @@ def draw_map(surface, session, assets, camera, rock_break_anim=None):
                             patch = assets.map_bg.subsurface((src_x, src_y, TILE_SIZE, TILE_SIZE))
                             surface.blit(patch, (sx, sy))
                 elif orig_ch == "R" and ch == "z":
-                    # Rock was broken - paint sand tile over the rock
-                    tile_surf = assets.get_tile("z")
-                    surface.blit(tile_surf, (sx, sy))
+                    # Rock was broken: sample the nearest authored sand tile
+                    # from the ROM-rendered background.  The generic sprite
+                    # fallback was a mismatched building/Pokecenter fragment.
+                    source = None
+                    for radius in range(1, max(len(layout), len(layout[0]))):
+                        for dy in range(-radius, radius + 1):
+                            for dx in range(-radius, radius + 1):
+                                if abs(dx) != radius and abs(dy) != radius:
+                                    continue
+                                ny, nx = row + dy, col + dx
+                                if (0 <= ny < len(layout) and 0 <= nx < len(layout[ny])
+                                        and layout[ny][nx] == "z"):
+                                    source = (nx, ny)
+                                    break
+                            if source:
+                                break
+                        if source:
+                            break
+                    if source:
+                        src_x, src_y = source[0] * TILE_SIZE, source[1] * TILE_SIZE
+                        patch = assets.map_bg.subsurface((src_x, src_y, TILE_SIZE, TILE_SIZE))
+                        surface.blit(patch, (sx, sy))
+                    else:
+                        surface.blit(assets.get_tile("z"), (sx, sy))
                 elif orig_ch == "R" and ch == "R":
                     # Rock still present - draw rock sprite overlay
                     tile_surf = assets.get_tile("R")
@@ -461,18 +500,18 @@ def draw_map(surface, session, assets, camera, rock_break_anim=None):
             surface.blit(frame_surf, (sx, sy))
         # Update animation
         rock_break_anim["ticks"] += 1
-        if rock_break_anim["ticks"] >= 8:  # 8 ticks per frame
+        # Advance at a visible cadence.  The animation state is returned to
+        # the main loop below, so each frame survives the next draw call.
+        if rock_break_anim["ticks"] >= 6:
             rock_break_anim["ticks"] = 0
             rock_break_anim["frame"] += 1
-            if rock_break_anim["frame"] >= 4:  # Animation complete
-                # Replace rock tile in layout with sand
-                rx, ry = rock_break_anim["x"], rock_break_anim["y"]
-                layout = session.get_current_map().get("layout", [])
-                if 0 <= ry < len(layout) and 0 <= rx < len(layout[ry]):
-                    row_list = list(layout[ry])
-                    if row_list[rx] == 'R':
-                        row_list[rx] = 'z'
-                        layout[ry] = "".join(row_list)
+            if rock_break_anim["frame"] >= len(assets.rock_smash_frames):
+                # Commit removal after the final visible frame.  Keep the map
+                # JSON immutable: it is the renderer's source layout and the
+                # session already understands removed rock IDs as sand.
+                rock_id = rock_break_anim.get("rock_id")
+                if rock_id:
+                    session.removed_rocks.add(rock_id)
                 rock_break_anim = None
     # Sandstorm effect for desert maps
     if session.current_map_key in ("rock_desert", "rock_desert_arena", "rock_desert_shelter"):
@@ -488,9 +527,17 @@ def draw_map(surface, session, assets, camera, rock_break_anim=None):
             surface.blit(sandstorm, (0, 0))
         except Exception:
             pass
+    return rock_break_anim
 
 
-def draw_ai(surface, session, assets, camera):
+def draw_surf_blob(surface, assets, sx, sy, direction, tick):
+    """Draw FireRed's separate Surf field effect behind the rider."""
+    blob = assets.surf_blob_frame(direction, tick)
+    if blob:
+        surface.blit(blob, (sx - TILE_SIZE // 2, sy - TILE_SIZE // 2))
+
+
+def draw_ai(surface, session, assets, camera, anim_tick=0):
     # IA Blue/Brock visible only on same map as player
     if not hasattr(session, "ai_map_key") or session.ai_map_key != session.current_map_key:
         return
@@ -513,6 +560,7 @@ def draw_ai(surface, session, assets, camera):
             surf_frame = assets.surf_frame(prefix, direction, mount=False)
             if surf_frame:
                 sx, sy = camera.to_screen(session.ai_x * TILE_SIZE, session.ai_y * TILE_SIZE)
+                draw_surf_blob(surface, assets, sx, sy, direction, pygame.time.get_ticks())
                 surface.blit(surf_frame, (sx, sy - TILE_SIZE))
                 return
         frame = assets.player_frame(prefix, direction, 0)
@@ -579,6 +627,7 @@ def draw_player(surface, session, assets, camera, walker, surf_transition=None):
         if not frame:
             frame = assets.get_npc_sprite(prefix)
         if frame:
+            draw_surf_blob(surface, assets, sx, sy, direction, pygame.time.get_ticks())
             surface.blit(frame, (sx, sy - TILE_SIZE - rise))
             return
         # fall through to blue box fallback
@@ -1153,6 +1202,17 @@ def main():
                                 collected_rumors.append(r["text"])
                             if r.get("reveal") and session.opponent:
                                 session.opponent.reveal(r["reveal"])
+                        elif r and r.get("rock_smash"):
+                            # Rock Smash is an interaction (Z), not a movement
+                            # result.  It was being returned by GameSession but
+                            # discarded here, so the move appeared unusable.
+                            rock_break_anim = {
+                                "x": r["rock_x"], "y": r["rock_y"],
+                                "frame": 0, "ticks": 0,
+                                "rock_id": r.get("rock_id"),
+                            }
+                            dialogue_text = "Crack! The rock shattered!"
+                            dialogue_timer = 50
                     elif event.key == pygame.K_x:
                         r = session.try_fish()
                         if r.get("encounter"):
@@ -1302,7 +1362,8 @@ def main():
                             elif result.get("rock_smash"):
                                 # Start rock break animation
                                 rx, ry = result.get("rock_x", 0), result.get("rock_y", 0)
-                                rock_break_anim = {"x": rx, "y": ry, "frame": 0, "ticks": 0}
+                                rock_break_anim = {"x": rx, "y": ry, "frame": 0, "ticks": 0,
+                                                   "rock_id": result.get("rock_id")}
                                 dialogue_text = "Crack! The rock shattered!"
                                 dialogue_timer = 50
                             elif result.get("pickup"):
@@ -1362,9 +1423,9 @@ def main():
         elif session.state == "MAP_SELECT":
             draw_map_select(screen, font, available_maps, map_cursor)
         elif session.state == "EXPLORING":
-            draw_map(screen, session, assets, camera, rock_break_anim)
+            rock_break_anim = draw_map(screen, session, assets, camera, rock_break_anim)
             draw_npcs(screen, session, assets, camera)
-            draw_ai(screen, session, assets, camera)
+            draw_ai(screen, session, assets, camera, pygame.time.get_ticks())
             draw_player(screen, session, assets, camera, walker, surf_transition)
             draw_team_hud(screen, session, assets, font)
             draw_opponent_hud(screen, session, assets, font)
@@ -1374,9 +1435,9 @@ def main():
             if show_inv:
                 draw_inventory(screen, session, font)
         elif session.state == "TEACH_HM":
-            draw_map(screen, session, assets, camera, rock_break_anim)
+            rock_break_anim = draw_map(screen, session, assets, camera, rock_break_anim)
             draw_npcs(screen, session, assets, camera)
-            draw_ai(screen, session, assets, camera)
+            draw_ai(screen, session, assets, camera, pygame.time.get_ticks())
             draw_player(screen, session, assets, camera, walker, surf_transition)
             draw_team_hud(screen, session, assets, font)
             draw_hm_teach_menu(screen, session, font, pending_hm, hm_cursor)
