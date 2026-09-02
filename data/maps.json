@@ -272,8 +272,8 @@
     ],
     "background": "forest/forest_north_rendered.png",
     "layout": [
-      "TTTTTTTTT............TTTTTTTTT",
-      "TTTTTTTTT.N..........TTTTTTTTT",
+      "TTTTTTTTT....YZ!.....TTTTTTTTT",
+      "TTTTTTTTT.N..UVX.....TTTTTTTTT",
       "TTTTTTTTT....QGP.....TTTTTTTTT",
       "TTTTTTTTT............TTTTTTTTT",
       "TTTggggggg...........gggggggTT",

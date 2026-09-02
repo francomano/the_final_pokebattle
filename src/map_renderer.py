@@ -59,6 +59,9 @@ TILE_MAP_DEFAULT = {
     'U': 0x0A0,      # Cave roof left
     'V': 0x0A1,      # Cave roof centre
     'X': 0x0A2,      # Cave roof right
+    'Y': 0x098,      # Cave crown left
+    'Z': 0x099,      # Cave crown centre
+    '!': 0x09A,      # Cave crown right
     'W': 0x003,      # Sign
     'N': 0x003,      # Sign post (with collision)
     'C': None,       # Cut tree - handled as ground + object sprite overlay (real ROM object)

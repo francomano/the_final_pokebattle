@@ -286,7 +286,12 @@ def generate_all(rom_path=None):
     try:
         from map_renderer import render_maps_from_rom
         maps_json = os.path.join(BASE_DIR, "data", "maps.json")
-        map_bg_dir = os.path.join(ASSET_DIR, "rocky_desert")
+        # ``background`` in maps.json is already relative to ``assets/``
+        # (for example ``forest/forest_south_rendered.png``).  Pass the
+        # asset root so the renderer does not nest every map under
+        # ``assets/rocky_desert`` and make the frontend fall back to the
+        # unrelated generic tile sprites after a clean regeneration.
+        map_bg_dir = ASSET_DIR
         if rom_path and os.path.exists(rom_path):
             render_maps_from_rom(rom_path, maps_json, map_bg_dir)
         else:
