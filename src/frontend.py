@@ -1072,15 +1072,24 @@ def _draw_item_icon(surface, name, x, y, size=28):
 
 
 def _draw_creature_card(surface, session, assets, font, c, x, y, w, selected, active,
-                        show_hp=True):
-    """Draw one horizontal team card (sprite + name + level + HP bar + ability)."""
+                        target=False, show_hp=True):
+    """Draw one horizontal team card (sprite + name + level + HP bar + ability).
+
+    `selected` = current cursor in TEAM mode (yellow).
+    `target`   = creature the potion will hit while browsing the BAG (blue).
+    """
     if selected:
-        pygame.draw.rect(surface, C_HIGHLIGHT, (x, y, w, 92), 2)
+        pygame.draw.rect(surface, C_HIGHLIGHT, (x, y, w, 92), 3)
+    elif target:
+        pygame.draw.rect(surface, C_BLUE, (x, y, w, 92), 3)
     else:
         pygame.draw.rect(surface, (70, 70, 95), (x, y, w, 92), 1)
     card = pygame.Surface((w - 2, 90), pygame.SRCALPHA)
     card.fill((255, 255, 255, 18))
     surface.blit(card, (x + 1, y + 1))
+    if target:
+        tg = font.render("POTION", True, C_BLUE)
+        surface.blit(tg, (x + (w - tg.get_width()) // 2, y - 10))
     sprite = assets.get_creature(c.species_id, (56, 56))
     sx = x + (w - 56) // 2
     if sprite:
@@ -1106,16 +1115,44 @@ def _draw_creature_card(surface, session, assets, font, c, x, y, w, selected, ac
     surface.blit(font.render(rel, True, C_WHITE), (x + w - 14, y + 2))
 
 
+def _keycap(font, label):
+    """Draw a yellow 'key' pill used in the big controls legend."""
+    s = font.render(label, True, (25, 18, 0))
+    w = s.get_width() + 12
+    h = s.get_height() + 6
+    box = pygame.Surface((w, h), pygame.SRCALPHA)
+    pygame.draw.rect(box, (255, 230, 110), (0, 0, w, h), border_radius=4)
+    box.blit(s, (6, 3))
+    return box
+
+
+def _legend_cells(surface, big, cells, x, y):
+    """Draw (keys, description) cells left-to-right from (x, y)."""
+    cx = x
+    for keys, desc in cells:
+        if keys is None:
+            surface.blit(big.render(desc, True, C_HIGHLIGHT), (cx, y))
+            cx += big.size(desc)[0] + 40
+            continue
+        kc = _keycap(big, keys)
+        surface.blit(kc, (cx, y))
+        d = big.render(desc, True, C_WHITE)
+        surface.blit(d, (cx + kc.get_width() + 10, y + 3))
+        cx += kc.get_width() + 10 + d.get_width() + 44
+
+
 def draw_inventory(surface, session, assets, font, state):
     """Graphical inventory: horizontal team up top, bag + key items below.
 
     `state` is a dict: {tab, item_cursor, creature_cursor, reorder, status, status_ticks}.
+    Navigation is SPATIAL: the BAG sits BELOW the TEAM, so use the DOWN arrow to
+    move from the team into the bag, and the UP arrow to come back.
     """
     ov = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
     ov.fill((0, 0, 0, 210))
     surface.blit(ov, (0, 0))
 
-    title = "INVENTORY  [TAB: switch panel    I/Esc: close]"
+    title = "INVENTORY      (I / ESC to close)"
     t = font.render(title, True, C_HIGHLIGHT)
     surface.blit(t, (20, 12))
 
@@ -1125,27 +1162,31 @@ def draw_inventory(surface, session, assets, font, state):
     team_cursor = min(state.get("creature_cursor", 0), max(0, len(team) - 1))
     active = session.player.active_creature()
 
-    # ---------- TEAM panel (horizontal cards) ----------
-    y = 46
-    label_color = C_HIGHLIGHT if tab == 0 else C_GREY
-    surface.blit(font.render("YOUR TEAM", True, label_color), (20, y))
-    y += 26
+    # ---------- TEAM panel (top, horizontal cards) ----------
+    y = 40
+    label_src = ">> YOUR TEAM" if tab == 0 else "YOUR TEAM"
+    surface.blit(font.render(label_src, True, C_HIGHLIGHT if tab == 0 else C_GREY), (20, y))
+    y += 24
     if team:
+        if tab == 0:
+            pygame.draw.rect(surface, C_HIGHLIGHT, (10, y - 6, 700, 100), 2)
+        else:
+            pygame.draw.rect(surface, (70, 70, 95), (10, y - 6, 700, 100), 1)
         x = 20
         card_w = 104
         for i, c in enumerate(team):
-            selected = (tab == 0 and i == team_cursor)
-            _draw_creature_card(surface, session, assets, font, c, x, y, card_w, selected,
-                                c is active)
+            _draw_creature_card(surface, session, assets, font, c, x, y, card_w,
+                                tab == 0 and i == team_cursor, c is active,
+                                target=(tab == 1 and i == team_cursor))
             x += card_w + 8
     else:
         surface.blit(font.render("No creatures!", True, C_WHITE), (20, y))
+    y += 106
 
-    # ---------- BAG panel ----------
-    y = 168
-    label_color = C_HIGHLIGHT if tab == 1 else C_GREY
-    surface.blit(font.render("BAG", True, label_color), (20, y))
-    y += 26
+    # ---------- BAG panel (bottom, vertical list) ----------
+    label_src = ">> BAG" if tab == 1 else "BAG"
+    surface.blit(font.render(label_src, True, C_HIGHLIGHT if tab == 1 else C_GREY), (20, y))
+    y += 24
 
     # Build item rows: consumables, then key items, then HMs
     rows = []
@@ -1159,34 +1200,49 @@ def draw_inventory(surface, session, assets, font, state):
     item_cursor = min(state.get("item_cursor", 0), max(0, len(rows) - 1)) if rows else 0
     window = 6
     start_row = max(0, min(item_cursor - window // 2, max(0, len(rows) - window - 1)))
+    if tab == 1:
+        pygame.draw.rect(surface, C_HIGHLIGHT, (10, y - 6, 360, min(len(rows), window + 1) * 22 + 12), 2)
     for i in range(start_row, min(len(rows), start_row + window + 1)):
         row = rows[i]
-        mark = "> " if (tab == 1 and i == item_cursor) else "  "
-        color = C_HIGHLIGHT if (tab == 1 and i == item_cursor) else C_WHITE
+        sel = (tab == 1 and i == item_cursor)
+        mark = "> " if sel else "  "
+        color = C_HIGHLIGHT if sel else C_WHITE
         display = font.render(mark + row["name"].replace("_", " ").upper()
                               + (f"  x{row['count']}" if row["count"] else ""), True, color)
-        surface.blit(display, (54, y + (i - start_row) * 20))
-        _draw_item_icon(surface, row["name"], 20, y + (i - start_row) * 20 + 2)
+        ry = y + (i - start_row) * 22
+        surface.blit(display, (54, ry + 2))
+        _draw_item_icon(surface, row["name"], 20, ry + 1)
     if not rows:
         surface.blit(font.render("  (empty)", True, C_GREY), (54, y))
 
-    # ---------- Context instructions ----------
-    footer_y = y + max(0, min(len(rows), window + 1)) * 20 + 8 if rows else y + 8
+    y += min(len(rows), window + 1) * 22 + 12
+
+    # ---------- BIG controls legend ----------
+    big = pygame.font.SysFont("monospace", 20, bold=True)
+    ly = y + 8
+    box_h = 180
+    box = pygame.Surface((SCREEN_W - 28, box_h), pygame.SRCALPHA)
+    box.fill((255, 255, 255, 28))
+    surface.blit(box, (14, ly - 8))
+    pygame.draw.rect(surface, C_HIGHLIGHT, (14, ly - 8, SCREEN_W - 28, box_h), 2)
+    _legend_cells(surface, big, [(None, "CONTROLS")], 24, ly)
+    ly += 40
+    _legend_cells(surface, big, [("< >", "pick a creature  (TEAM)"), ("^ v", "pick an item  (BAG)")], 24, ly)
+    ly += 34
+    _legend_cells(surface, big, [("v", "TEAM  ->  BAG"), ("^", "BAG  ->  TEAM  (top)")], 24, ly)
+    ly += 34
+    _legend_cells(surface, big, [("Z", "potion / use item"), ("R", "reorder team")], 24, ly)
+    ly += 34
+    _legend_cells(surface, big, [("T", "teach an HM"), ("I / ESC", "close")], 24, ly)
+
+    # ---------- Status message ----------
     status = state.get("status")
-    if tab == 0 and state.get("reorder"):
-        text = "REORDER MODE: arrows move this creature   Z/Enter=stop"
-    elif tab == 0:
-        text = "Arrows:select   R:reorder   Z/Enter:Potion on selected   TAB:Bag"
-    else:
-        item_name = rows[item_cursor]["name"] if rows else ""
-        if item_name == "potion":
-            text = "Potion heals the highlighted creature   T:teach HM   TAB:Team"
-        else:
-            text = "Arrows:select   Z/Enter:use   T:teach HM   TAB:Team"
-    surface.blit(font.render(text, True, C_GREY), (20, footer_y))
+    show_reorder = bool(state.get("reorder"))
+    if show_reorder and tab == 0:
+        status = "REORDERING: < > moves this creature,  Z / Enter to stop"
     if status:
         st = font.render(f"* {status}", True, C_HIGHLIGHT)
-        surface.blit(st, (20, footer_y + 18))
+        surface.blit(st, (24, ly + 18))
 
 
 def draw_hm_teach_menu(surface, session, font, hm_name, cursor):
@@ -1524,9 +1580,6 @@ def main():
                         if event.key in (pygame.K_i, pygame.K_ESCAPE):
                             show_inv = False
                             inv_state["reorder"] = False
-                        elif event.key in (pygame.K_TAB, pygame.K_q):
-                            inv_state["tab"] = 1 - inv_state["tab"]
-                            inv_state["reorder"] = False
                         elif event.key == pygame.K_t:
                             for hm in sorted(inv.hms_obtained):
                                 has_it = [c for c in team if
@@ -1542,7 +1595,7 @@ def main():
                                     inv_state["reorder"] = False
                                     break
                         elif inv_state["tab"] == 1:
-                            # ---- BAG panel ----
+                            # ---- BAG panel (list below the team) ----
                             rows = []
                             for it, cnt in sorted(inv.items.items()):
                                 rows.append({"type": "item", "name": it, "count": cnt})
@@ -1553,7 +1606,10 @@ def main():
                             if not rows:
                                 rows = [{"type": "none", "name": "", "count": None}]
                             if event.key in (pygame.K_UP, pygame.K_w):
-                                inv_state["item_cursor"] = (inv_state["item_cursor"] - 1) % len(rows)
+                                if inv_state["item_cursor"] == 0:
+                                    inv_state["tab"] = 0
+                                else:
+                                    inv_state["item_cursor"] -= 1
                             elif event.key in (pygame.K_DOWN, pygame.K_s):
                                 inv_state["item_cursor"] = (inv_state["item_cursor"] + 1) % len(rows)
                             elif event.key == pygame.K_LEFT:
@@ -1576,7 +1632,7 @@ def main():
                                     inv_state["status"] = "Press T to teach this HM."
                                     inv_state["status_ticks"] = 150
                         else:
-                            # ---- TEAM panel ----
+                            # ---- TEAM panel (cards side by side, BAG below) ----
                             if not team:
                                 inv_state["tab"] = 1
                             elif inv_state["reorder"]:
@@ -1591,12 +1647,11 @@ def main():
                                     inv_state["reorder"] = False
                             else:
                                 if event.key == pygame.K_LEFT:
-                                    if inv_state["creature_cursor"] == 0:
-                                        inv_state["tab"] = 1
-                                    else:
-                                        inv_state["creature_cursor"] -= 1
+                                    inv_state["creature_cursor"] = (inv_state["creature_cursor"] - 1) % len(team)
                                 elif event.key == pygame.K_RIGHT:
                                     inv_state["creature_cursor"] = (inv_state["creature_cursor"] + 1) % len(team)
+                                elif event.key in (pygame.K_DOWN, pygame.K_s):
+                                    inv_state["tab"] = 1
                                 elif event.key == pygame.K_r:
                                     inv_state["reorder"] = True
                                 elif event.key in (pygame.K_z, pygame.K_RETURN):
