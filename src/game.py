@@ -364,19 +364,17 @@ class BattleEngine:
         self.log.extend(msgs)
         return msgs
 
-    def try_capture(self, ball_bonus=10):
-        """Replicates the FireRed capture formula (Cmd_trytocatch in the ROM).
+    def roll_capture(self, ball_bonus=10):
+        """Roll the capture outcome WITHOUT modifying any battle state.
 
-        ball_bonus mirrors the ROM sBallCatchBonuses: Poke=10, Great=15, Ultra=20.
+        Mirror of the FireRed formula; returns the number of consecutive
+        successful shake rolls (0..3). 3 = captured. The front end uses this to
+        preview how many shakes the Poké Ball animation should show, then hands
+        the same value back to try_capture() so result and animation agree.
         """
-        if self.finished:
-            return []
-        self.anim_events = []
-        if self.is_final:
-            return ["Can't capture your rival's creature!"]
+        if self.is_final or self.finished:
+            return 0
         enemy = self.enemy
-        # odds = (catchRate * ballBonus) * (3*maxHP - 2*curHP) / (3*maxHP),
-        # integer math exactly as in the ROM.
         catch_rate = max(1, getattr(enemy, "catch_rate", 200))
         odds = (catch_rate * ball_bonus // 10)
         odds = odds * (3 * enemy.max_hp - 2 * enemy.hp) // (3 * enemy.max_hp)
@@ -386,10 +384,7 @@ class BattleEngine:
         elif status in ("poison", "burn", "paralysis"):
             odds = odds * 15 // 10
         if odds > 254:
-            self.finished = True
-            self.result = "captured"
-            return [f"Gotcha! {enemy.name} was captured!"]
-        # Shake check: odds = 1048560 / sqrt(sqrt(16711680 / odds)); 3 rolls.
+            return 3
         if odds > 0:
             shake_odds = 1048560 // math.isqrt(math.isqrt(16711680 // odds))
         else:
@@ -400,7 +395,23 @@ class BattleEngine:
                 shakes += 1
             else:
                 break
-        if shakes >= 3:
+        return shakes
+
+    def try_capture(self, ball_bonus=10, pre_shakes=None):
+        """Replicates the FireRed capture formula (Cmd_trytocatch in the ROM).
+
+        ball_bonus mirrors the ROM sBallCatchBonuses: Poke=10, Great=15, Ultra=20.
+        `pre_shakes` (from roll_capture) makes the outcome match the animation.
+        """
+        if self.finished:
+            return []
+        self.anim_events = []
+        if self.is_final:
+            return ["Can't capture your rival's creature!"]
+        enemy = self.enemy
+        if pre_shakes is None:
+            pre_shakes = self.roll_capture(ball_bonus)
+        if pre_shakes >= 3:
             self.finished = True
             self.result = "captured"
             return [f"Gotcha! {enemy.name} was captured!"]
@@ -1253,7 +1264,7 @@ class GameSession:
 
         return {"nothing": True}
 
-    def battle_action(self, action, param=0):
+    def battle_action(self, action, param=0, capture_shakes=None):
         """Execute battle action."""
         if self.state not in ("BATTLE", "FINAL_BATTLE") or self.battle is None:
             return []
@@ -1265,7 +1276,7 @@ class GameSession:
             msgs = self.battle.try_flee()
         elif action == "capture":
             if self.player.inventory.use_item("pokeball"):
-                msgs = self.battle.try_capture()
+                msgs = self.battle.try_capture(pre_shakes=capture_shakes)
             else:
                 msgs = ["No balls left!"]
         elif action == "potion":

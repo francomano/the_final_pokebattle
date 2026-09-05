@@ -10,8 +10,8 @@ import os
 import sys
 
 # ---------- ROM offsets (Fire Red US 1.0) -----------------------------------
-OFFSET_FRONT_PICS = 0x2350AC    # 8 bytes per species (ptr, size_tag)
-OFFSET_BACK_PICS = 0x235E54     # 8 bytes per species
+OFFSET_FRONT_PICS = 0x2350AC    # gMonFrontPicTable: 8 bytes/entry (ptr, size_tag)
+OFFSET_BACK_PICS = 0x23654C     # gMonBackPicTable: 8 bytes/entry (ptr, size_tag)
 OFFSET_PALETTES = 0x23730C      # creature palettes (8 bytes per species)
 OFFSET_TRAINER_PALETTES = 0x239A1C  # trainer front pic palettes (8 bytes per trainer)
 OFFSET_SHINY_PALS = 0x2385CC    # shiny palettes
@@ -207,6 +207,33 @@ class SpriteExtractor:
         _write_png(png_path, pixels, SPRITE_WH, SPRITE_WH)
         return png_path
 
+    def extract_creature_back_sprite(self, species_id):
+        """Extract the BACK sprite for a species (seen from behind in battle).
+
+        The back table (gMonBackPicTable) uses the same 8-byte (ptr, size, tag)
+        layout as the front table, so it is indexed identically and shares the
+        regular palette. No horizontal flip is needed: the stored data already
+        faces away from the viewer, exactly like the in-game sprite.
+        """
+        png_path = os.path.join(self.cache_dir, f"creature_{species_id:03d}_back.png")
+        if os.path.exists(png_path):
+            return png_path
+
+        pic_offset = OFFSET_BACK_PICS + species_id * 8
+        sprite_ptr = self._read_ptr(pic_offset)
+        sprite_data = decompress_lz77(self.rom, sprite_ptr)
+        if not sprite_data:
+            return None
+
+        pal_offset = OFFSET_PALETTES + species_id * 8
+        pal_ptr = self._read_ptr(pal_offset)
+        pal_data = decompress_lz77(self.rom, pal_ptr)
+        palette = parse_gba_palette(pal_data) if pal_data else None
+
+        pixels = decode_4bpp_sprite(sprite_data, SPRITE_WH, SPRITE_WH, palette)
+        _write_png(png_path, pixels, SPRITE_WH, SPRITE_WH)
+        return png_path
+
     def extract_tileset(self, max_tiles=128):
         """Extract overworld tileset tiles. Returns path to tileset PNG."""
         png_path = os.path.join(self.cache_dir, "tileset.png")
@@ -274,6 +301,13 @@ class SpriteExtractor:
         if os.path.exists(png_path):
             return png_path
         return self.extract_creature_sprite(species_id)
+
+    def get_creature_back_sprite_path(self, species_id):
+        """Get path to the back sprite, extracting if needed."""
+        png_path = os.path.join(self.cache_dir, f"creature_{species_id:03d}_back.png")
+        if os.path.exists(png_path):
+            return png_path
+        return self.extract_creature_back_sprite(species_id)
 
     def extract_trainer_front_pics(self):
         """Extract trainer front pic sprites from ROM for HUD portraits."""

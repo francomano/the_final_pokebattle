@@ -307,6 +307,23 @@ class Assets:
         self.creatures[key] = surf
         return surf
 
+    def get_creature_back(self, species_id, size=(48, 48)):
+        """Back (seen-from-behind) sprite, used for the player's creature in battle."""
+        key = ("back", species_id, size)
+        if key in self.creatures:
+            return self.creatures[key]
+        path = self.extractor.get_creature_back_sprite_path(species_id)
+        if path:
+            s = self._img(path, size)
+            if s:
+                self.creatures[key] = s
+                return s
+        # fallback
+        surf = pygame.Surface(size, pygame.SRCALPHA)
+        pygame.draw.circle(surf, C_BLUE, (size[0]//2, size[1]//2), size[0]//3)
+        self.creatures[key] = surf
+        return surf
+
 
 # ---------- Smooth Walker ---------------------------------------------------
 
@@ -964,8 +981,120 @@ class BattleAnimator:
             })
 
 
-def draw_battle(surface, session, assets, font, b_cur, m_cur, anim=None):
-    surface.fill(C_DARK)
+class CaptureAnimator:
+    """A programmatic Poké Ball throw + shake animation for capture attempts.
+
+    Timeline (ticks):
+      0..18        THROW: ball flies in an arc from the player to the enemy's center.
+      18..26       DROP:  ball drops to ground in front of the enemy; enemy fades out.
+      26..end      SHAKE: the ball wobbles `shakes` times (0 = instant pop).
+      end..        SUCCESS: white gleam + ball "click"; FAIL: red flash + enemy re-appears.
+    """
+
+    RADIUS = 15
+    HIT_T = 14        # when the ball reaches the enemy during the throw arc
+    T_THROW = 20
+    T_DROP = 30       # drop finished, shaking starts
+    SHAKE_LEN = 15
+    DONE_EXTRA = 12   # success sparkle extra ticks after the last shake
+
+    def __init__(self, player_pos, enemy_pos, shakes=0, success=False):
+        self.px, self.py = player_pos
+        self.ex, self.ey = enemy_pos
+        self.shakes = max(0, shakes)
+        self.success = bool(success)
+        self.t = 0
+        self.done = False
+        self.dropped = False   # enemy hidden once ball lands
+        self.broken = False    # fail: enemy revealed again
+        self.start = (self.px + 84, self.py - 10)
+        self.hit = (self.ex + 48, self.ey + 48)
+        self.rest = (self.ex + 48, self.ey + 88)
+        self.ball = self.start
+        self.sparks = []
+        # deterministic sparkle particles for the success gleam
+        rng = random.Random(0x5A17)
+        for _ in range(10):
+            ang = rng.uniform(0, math.tau)
+            spd = rng.uniform(1.2, 3.6)
+            self.sparks.append([0.0, 0.0, math.cos(ang) * spd, math.sin(ang) * spd - 0.5])
+        self._end = self.T_DROP + self.shakes * self.SHAKE_LEN + (self.DONE_EXTRA if self.success else 10)
+
+    def update(self):
+        if self.done:
+            return
+        self.t += 1
+        # --- throw arc (up then down to the enemy center) ---
+        if self.t < self.T_THROW:
+            f = self.t / self.HIT_T
+            if f > 1:
+                f = 1.0
+            x = self.start[0] + (self.hit[0] - self.start[0]) * f
+            y = self.start[1] + (self.hit[1] - self.start[1]) * f - math.sin(f * math.pi) * 70
+            self.ball = (x, y)
+        # --- drop to the ground ---
+        elif self.t >= self.T_THROW and self.t < self.T_DROP:
+            f = (self.t - self.T_THROW) / max(1, (self.T_DROP - self.T_THROW))
+            x = self.hit[0] + (self.rest[0] - self.hit[0]) * f
+            y = self.hit[1] + (self.rest[1] - self.hit[1]) * f
+            self.ball = (x, y)
+            self.dropped = True
+        # --- shaking ---
+        elif self.t < self._end:
+            i = (self.t - self.T_DROP) // self.SHAKE_LEN   # shake index
+            lt = (self.t - self.T_DROP) % self.SHAKE_LEN   # tick inside shake
+            dx = math.sin(lt / self.SHAKE_LEN * math.pi) * (8 if i % 2 == 0 else -8)
+            dy = -abs(math.sin(lt / self.SHAKE_LEN * math.pi) * 6)
+            self.ball = (self.rest[0] + dx, self.rest[1] + dy)
+            self.dropped = True
+        # --- end phase: sparkle / flash while ball stays put ---
+        else:
+            self.ball = self.rest
+            star = self.t - self._end + 1
+            for p in self.sparks:
+                p[0] += p[2]
+                p[1] += p[3]
+                p[3] += 0.12
+            if not self.success and star >= 10:
+                self.broken = True
+            if star >= 14:
+                self.done = True
+
+    def draw(self, surface, anim=None):
+        ox = oy = 0
+        if anim is not None:
+            off = anim.offset.get("enemy", (0, 0))
+            ox, oy = off
+        # hide the enemy once the ball lands (it is trapped inside)
+        if self.dropped and not self.broken:
+            pygame.draw.rect(surface, C_DARK, (self.ex + ox, self.ey + oy, 96, 96))
+        if self.t < self._end:
+            self._draw_ball(surface, self.ball[0], self.ball[1])
+        else:
+            star = self.t - self._end + 1
+            bx, by = self.ball
+            if self.success:
+                pygame.draw.circle(surface, (255, 255, 255), (int(bx), int(by)), min(30, 6 + star * 2), 2)
+                for p in self.sparks:
+                    pygame.draw.circle(surface, (255, 255, 160), (int(bx + p[0]), int(by + p[1])), 2)
+        # fail flash: red burst over the broken ball
+        if self.broken:
+            pygame.draw.circle(surface, (255, 60, 60), self.rest, 26, 3)
+            pygame.draw.circle(surface, (255, 60, 60), self.rest, 16, 2)
+
+    def _draw_ball(self, surface, x, y):
+        cx, cy = int(x), int(y)
+        r = self.RADIUS
+        pygame.draw.circle(surface, (25, 25, 35), (cx + 1, cy + 3), r)         # shadow
+        pygame.draw.circle(surface, (235, 235, 235), (cx, cy - 1), r)          # white
+        pygame.draw.circle(surface, (220, 50, 50), (cx, cy - 1), r)            # red (top half)
+        pygame.draw.rect(surface, (15, 15, 25), (cx - r, cy - 1, r * 2, 2))    # seam (dark)
+        pygame.draw.rect(surface, (40, 40, 48), (cx - r, cy - 1, r * 2, 2))    # seam (band)
+        pygame.draw.circle(surface, (250, 250, 250), (cx, cy - 1), 5)
+        pygame.draw.circle(surface, (40, 40, 48), (cx, cy - 1), 3)
+
+
+def draw_battle(surface, session, assets, font, b_cur, m_cur, anim=None, capture_anim=None):
     battle = session.battle
     if not battle:
         return
@@ -991,8 +1120,8 @@ def draw_battle(surface, session, assets, font, b_cur, m_cur, anim=None):
     er = max(0, battle.enemy.hp / battle.enemy.max_hp)
     pygame.draw.rect(surface, C_GREEN, (SCREEN_W - 300, 55, int(130*er), 8))
     surface.blit(font.render(f"{battle.enemy.hp}/{battle.enemy.max_hp}", True, C_GREY), (SCREEN_W - 300, 66))
-    # Player
-    ps = assets.get_creature(battle.player.species_id, (96, 96))
+    # Player (seen from behind)
+    ps = assets.get_creature_back(battle.player.species_id, (96, 96))
     px, py = BattleAnimator.PLAYER_POS
     if anim:
         aox, aoy = anim.offset.get("player", (0, 0))
@@ -1021,6 +1150,8 @@ def draw_battle(surface, session, assets, font, b_cur, m_cur, anim=None):
         surface.blit(font.render(msg, True, C_GREY), (20, my + 60 + idx * 17))
     if anim is not None:
         anim.draw(surface)
+    if capture_anim is not None:
+        capture_anim.draw(surface, anim)
     # Sandstorm battle weather effect
     if session.current_map_key in ("rock_desert", "rock_desert_arena", "rock_desert_shelter"):
         try:
@@ -1465,6 +1596,8 @@ def main():
     surf_transition = None  # {"type": "mount"/"dismount", "dir": ..., "ticks": ...}
     rock_break_anim = None  # {"x":, "y":, "frame": 0-3, "ticks": 0}
     battle_anim = BattleAnimator()
+    capture_anim = None          # CaptureAnimator while a catch is in progress
+    capture_shakes = None        # pre-rolled shake count for the catch resolution
 
     # Input buffer for held-key movement
     move_request = (0, 0)
@@ -1742,6 +1875,9 @@ def main():
                         continue
                     is_final = session.state == "FINAL_BATTLE"
                     n_act = 2 if is_final else 4
+                    if capture_anim is not None:
+                        # lock input while the catch animation is playing
+                        continue
                     if event.key in (pygame.K_UP,):
                         battle_cursor = (battle_cursor - 1) % n_act; move_cursor = 0
                     elif event.key in (pygame.K_DOWN,):
@@ -1761,11 +1897,26 @@ def main():
                             act = "attack" if battle_cursor == 0 else "potion"
                         else:
                             act = ["attack", "capture", "potion", "flee"][battle_cursor]
-                        msgs = session.battle_action(act, move_cursor if act == "attack" else 0)
-                        if session.battle:
-                            battle_anim.add_events(session.battle.anim_events)
-                        if msgs:
-                            dialogue_text = " | ".join(msgs[-2:]); dialogue_timer = 110
+                        if act == "capture" and not is_final:
+                            # Only START the throw: the capture is resolved when
+                            # the animation finishes, with the same pre-rolled shakes.
+                            if not session.player.inventory.has_item("pokeball"):
+                                dialogue_text = "No Poké Balls left!"; dialogue_timer = 110
+                            else:
+                                capture_shakes = session.battle.roll_capture()
+                                capture_anim = CaptureAnimator(
+                                    BattleAnimator.PLAYER_POS,
+                                    BattleAnimator.ENEMY_POS,
+                                    shakes=capture_shakes,
+                                    success=capture_shakes >= 3)
+                                session.battle.log.append("You threw a Poké Ball!")
+                                battle_cursor = 0; move_cursor = 0
+                        else:
+                            msgs = session.battle_action(act, move_cursor if act == "attack" else 0)
+                            if session.battle:
+                                battle_anim.add_events(session.battle.anim_events)
+                            if msgs:
+                                dialogue_text = " | ".join(msgs[-2:]); dialogue_timer = 110
                     elif event.key in (pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4):
                         mi = min(event.key - pygame.K_1, len(session.battle.player.moves)-1)
                         move_cursor = mi
@@ -1788,7 +1939,10 @@ def main():
             else:
                 # Timer keeps flowing during normal battles (not the final one):
                 # if it runs out, the center final battle starts.
-                res = session.tick_timer(dt)
+                # Freeze it while the catch animation plays, so the final battle
+                # can't race the ball pocket.
+                if capture_anim is None:
+                    res = session.tick_timer(dt)
             # session.update may have switched to FINAL_BATTLE and repositioned player
             if res is not None or session.state == "FINAL_BATTLE":
                 if session.state == "FINAL_BATTLE":
@@ -1803,26 +1957,33 @@ def main():
                     pending_encounter = None
 
         # --- smooth walk logic ---
-        if session.state == "EXPLORING" and not show_inv and not dialogue_text:
-            step_done = walker.update()
-            # A surf mount/dismount transition lasts exactly one walk step.
-            if step_done:
-                surf_transition = None
-            # Pending encounter triggers AFTER walk animation completes
-            if step_done and pending_encounter:
+        in_exploring = session.state == "EXPLORING" and not show_inv and not dialogue_text
+        step_done = walker.update()
+        # A surf mount/dismount transition lasts exactly one walk step.
+        if step_done:
+            surf_transition = None
+            # Pending encounter triggers AFTER the walk animation completes.
+            # Runs in every state: the encounter already put us in BATTLE, so the
+            # intro dialogue must appear even though the walk finished post-wrap.
+            if pending_encounter:
                 w = pending_encounter
                 extractor.extract_creature_sprite(w.species_id)
+                extractor.extract_creature_back_sprite(w.species_id)
+                capture_anim = None
+                capture_shakes = None
                 battle_anim = BattleAnimator()
                 dialogue_text = f"Wild {w.name} Lv{w.level} appeared!"
                 dialogue_timer = 90; battle_cursor = 0; move_cursor = 0
                 pending_encounter = None
-            elif step_done and pending_final:
+            elif pending_final:
                 battle_anim = BattleAnimator()
+                capture_anim = None
+                capture_shakes = None
                 dialogue_text = "RIVAL BATTLE! Get ready!"
                 dialogue_timer = 120; battle_cursor = 0; move_cursor = 0
                 pending_final = False
-            # If not currently walking (or in a surf transition), check for held keys
-            if not walker.walking and not surf_transition:
+        # If not currently walking (or in a surf transition), check for held keys
+        if in_exploring and not walker.walking and not surf_transition:
                 keys = pygame.key.get_pressed()
                 dx, dy = 0, 0
                 if keys[pygame.K_UP]: dy = -1
@@ -1889,8 +2050,6 @@ def main():
                         elif dx < 0: session.player.direction = "left"
                         elif dy > 0: session.player.direction = "down"
                         elif dy < 0: session.player.direction = "up"
-        else:
-            walker.update()
 
         # --- dialogue timer ---
         if dialogue_timer > 0:
@@ -1941,7 +2100,20 @@ def main():
             draw_hm_teach_menu(screen, session, font, pending_hm, hm_cursor)
         elif session.state in ("BATTLE", "FINAL_BATTLE"):
             battle_anim.update()
-            draw_battle(screen, session, assets, font, battle_cursor, move_cursor, battle_anim)
+            if capture_anim is not None:
+                capture_anim.update()
+                if capture_anim.done:
+                    # Resolve the catch now that the animation finished.
+                    msgs = session.battle_action("capture", 0,
+                                                 capture_shakes=capture_shakes)
+                    if session.battle:
+                        battle_anim.add_events(session.battle.anim_events)
+                    if msgs:
+                        dialogue_text = " | ".join(msgs[-2:]); dialogue_timer = 110
+                    capture_anim = None
+                    capture_shakes = None
+            draw_battle(screen, session, assets, font, battle_cursor, move_cursor,
+                        battle_anim, capture_anim)
         elif session.state == "VICTORY":
             screen.fill(C_BG)
             surface = screen
