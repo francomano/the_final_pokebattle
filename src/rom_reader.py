@@ -17,8 +17,11 @@ OFFSET_MOVE_NAMES = 0x247094       # 13 bytes per name
 OFFSET_BATTLE_MOVES = 0x250C04     # 12 bytes per move
 OFFSET_LEARNSETS = 0x25D7B4        # 4 bytes per species (pointer table)
 OFFSET_MAP_GROUPS = 0x3526A8       # pointer table to map group arrays
+OFFSET_ABILITIES_NAMES = 0x24FC40  # 78 abilities x 13 bytes (index = ability id)
 
 BASE_STATS_SIZE = 28
+ABILITY_NAME_LEN = 13
+NUM_ABILITIES = 78
 SPECIES_NAME_LEN = 11
 MOVE_NAME_LEN = 13
 BATTLE_MOVE_SIZE = 12
@@ -149,6 +152,8 @@ class RomReader:
                 result.append('.')
             elif b == 0xBA:
                 result.append('-')
+            elif b == 0xAE:
+                result.append('-')
             else:
                 result.append('')
         return ''.join(result).strip()
@@ -161,6 +166,13 @@ class RomReader:
             return f"Species{species_id}"
         offset = OFFSET_SPECIES_NAMES + species_id * SPECIES_NAME_LEN
         return self._decode_text(self.data[offset:offset + SPECIES_NAME_LEN])
+
+    def read_ability_name(self, ability_id):
+        """Read an ability name by its Gen 3 ability id (1 vs index; 0 = none)."""
+        if ability_id is None or ability_id <= 0 or ability_id >= NUM_ABILITIES:
+            return None
+        offset = OFFSET_ABILITIES_NAMES + ability_id * ABILITY_NAME_LEN
+        return self._decode_text(self.data[offset:offset + ABILITY_NAME_LEN]) or None
 
     def read_base_stats(self, species_id):
         """Read base stats for a species. Returns dict."""
@@ -179,6 +191,8 @@ class RomReader:
             "type2": d[offset + 7],
             "catch_rate": d[offset + 8],
             "exp_yield": d[offset + 9],
+            "ability1": d[offset + 0x16],
+            "ability2": d[offset + 0x17],
         }
 
     def read_species(self, species_id):
@@ -192,6 +206,7 @@ class RomReader:
         type2_idx = stats["type2"]
         stats["element"] = TYPE_NAMES[type1_idx] if type1_idx < len(TYPE_NAMES) else "normal"
         stats["element2"] = TYPE_NAMES[type2_idx] if type2_idx < len(TYPE_NAMES) else "normal"
+        stats["ability"] = self.read_ability_name(stats.get("ability1"))
         return stats
 
     # ---------- move data ---------------------------------------------------

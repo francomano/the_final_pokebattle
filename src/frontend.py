@@ -973,6 +973,12 @@ def draw_battle(surface, session, assets, font, b_cur, m_cur, anim=None):
     if is_final:
         t = font.render("=== FINAL BATTLE ===", True, C_HIGHLIGHT)
         surface.blit(t, (SCREEN_W//2 - t.get_width()//2, 5))
+    else:
+        # Show the countdown so the timer that flows during battle is visible
+        secs = max(0, int(getattr(session, "timer", 0)))
+        t = font.render(f"TIME {secs//60:02d}:{secs%60:02d}", True,
+                        C_RED if secs <= 30 else C_HIGHLIGHT)
+        surface.blit(t, (SCREEN_W//2 - t.get_width()//2, 5))
     # Enemy
     es = assets.get_creature(battle.enemy.species_id, (96, 96))
     ex, ey = BattleAnimator.ENEMY_POS
@@ -1031,31 +1037,156 @@ def draw_battle(surface, session, assets, font, b_cur, m_cur, anim=None):
             pass
 
 
-def draw_inventory(surface, session, font):
+def _draw_item_icon(surface, name, x, y, size=28):
+    """Draw a small programmatic icon for an inventory item."""
+    icon = pygame.Surface((size, size), pygame.SRCALPHA)
+    name = (name or "").lower()
+    if "potion" in name:
+        # pink potion bottle
+        pygame.draw.rect(icon, (240, 150, 180), (size//2-6, size//2-8, 12, 9))
+        pygame.draw.rect(icon, (180, 90, 120), (size//2-2, size//2-8, 4, 2))
+        pygame.draw.rect(icon, (240, 150, 180), (size//2-4, size//2-5, 8, 14))
+        pygame.draw.circle(icon, (200, 120, 150), (size//2, size//2+8), 3)
+    elif "ball" in name or "rock_ball" in name:
+        # red/white pokeball
+        pygame.draw.circle(icon, (230, 60, 60), (size//2, size//2-2), size//2-3)
+        pygame.draw.circle(icon, (255, 255, 255), (size//2, size//2+2), size//2-3)
+        pygame.draw.rect(icon, (40, 40, 40), (size//2-1, size//2-10, 2, size-8))
+        pygame.draw.circle(icon, (250, 250, 250), (size//2, size//2-1), 4)
+        pygame.draw.circle(icon, (40, 40, 40), (size//2, size//2-1), 2)
+    elif "rod" in name:
+        # fishing rod
+        pygame.draw.line(icon, (150, 110, 70), (3, size-2), (size-6, 3), 2)
+        pygame.draw.line(icon, (200, 200, 200), (size-6, 3), (size-2, size-6), 2)
+        pygame.draw.line(icon, (200, 200, 200), (size-4, size-5), (size-8, size-8), 1)
+    elif name.startswith("hm") or name in ("cut", "surf", "rock_smash", "strength"):
+        # TM/HM disc
+        pygame.draw.circle(icon, (120, 120, 130), (size//2, size//2), size//2-2)
+        pygame.draw.circle(icon, (30, 30, 40), (size//2, size//2), size//2-6)
+        pygame.draw.circle(icon, (230, 230, 230), (size//2, size//2-6), 2)
+    else:
+        # generic shiny case
+        pygame.draw.rect(icon, (150, 200, 255), (3, size//2-7, size-6, 14), border_radius=3)
+        pygame.draw.rect(icon, (90, 140, 220), (6, size//2-2, size-12, 4))
+    surface.blit(icon, (x, y))
+
+
+def _draw_creature_card(surface, session, assets, font, c, x, y, w, selected, active,
+                        show_hp=True):
+    """Draw one horizontal team card (sprite + name + level + HP bar + ability)."""
+    if selected:
+        pygame.draw.rect(surface, C_HIGHLIGHT, (x, y, w, 92), 2)
+    else:
+        pygame.draw.rect(surface, (70, 70, 95), (x, y, w, 92), 1)
+    card = pygame.Surface((w - 2, 90), pygame.SRCALPHA)
+    card.fill((255, 255, 255, 18))
+    surface.blit(card, (x + 1, y + 1))
+    sprite = assets.get_creature(c.species_id, (56, 56))
+    sx = x + (w - 56) // 2
+    if sprite:
+        sprite = pygame.transform.flip(sprite, True, False)
+        surface.blit(sprite, (sx, y + 4))
+    else:
+        pygame.draw.circle(surface, C_GREY, (x + w//2, y + 30), 16)
+    name_y = y + 60
+    name = c.name[:12]
+    surface.blit(font.render(name, True, C_WHITE), (x + 4, name_y))
+    lv = font.render(f"Lv{c.level}", True, C_RED if c.is_fainted() else C_HIGHLIGHT)
+    surface.blit(lv, (x + 4, name_y + 14))
+    if c.ability:
+        abl = font.render(c.ability[:10], True, (150, 200, 255))
+        surface.blit(abl, (x + w - 4 - abl.get_width(), name_y + 14))
+    if show_hp:
+        hp_ratio = max(0.0, c.hp / c.max_hp)
+        bar_w = w - 12
+        pygame.draw.rect(surface, (40, 30, 30), (x + 4, y + 74, bar_w, 8))
+        color = C_GREEN if hp_ratio > 0.5 else (C_HIGHLIGHT if hp_ratio > 0.2 else C_RED)
+        pygame.draw.rect(surface, color, (x + 4, y + 74, int(bar_w * hp_ratio), 8))
+    rel = "▶" if active else ("✖" if c.is_fainted() else "◎")
+    surface.blit(font.render(rel, True, C_WHITE), (x + w - 14, y + 2))
+
+
+def draw_inventory(surface, session, assets, font, state):
+    """Graphical inventory: horizontal team up top, bag + key items below.
+
+    `state` is a dict: {tab, item_cursor, creature_cursor, reorder, status, status_ticks}.
+    """
     ov = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
-    ov.fill((0, 0, 0, 190))
+    ov.fill((0, 0, 0, 210))
     surface.blit(ov, (0, 0))
-    surface.blit(font.render("=== INVENTORY (I to close) ===", True, C_HIGHLIGHT), (20, 15))
-    y = 45
+
+    title = "INVENTORY  [TAB: switch panel    I/Esc: close]"
+    t = font.render(title, True, C_HIGHLIGHT)
+    surface.blit(t, (20, 12))
+
     inv = session.player.inventory
-    surface.blit(font.render("ITEMS:", True, C_WHITE), (20, y)); y += 20
-    for it, cnt in inv.items.items():
-        surface.blit(font.render(f"  {it}: x{cnt}", True, C_WHITE), (20, y)); y += 18
-    y += 10
-    surface.blit(font.render("KEY ITEMS:", True, C_WHITE), (20, y)); y += 20
-    for ki in inv.key_items:
-        surface.blit(font.render(f"  {ki}", True, C_WHITE), (20, y)); y += 18
-    y += 10
-    surface.blit(font.render("HMs:", True, C_WHITE), (20, y)); y += 20
-    for hm in inv.hms_obtained:
-        taught_to = [c.name for c in session.player.team if (hm == "cut" and c.can_cut) or (hm == "surf" and c.can_surf)]
-        status = f" -> {taught_to[0]}" if taught_to else " [T to teach]"
-        surface.blit(font.render(f"  {hm.upper()}{status}", True, C_WHITE), (20, y)); y += 18
-    y += 15
-    surface.blit(font.render("TEAM:", True, C_WHITE), (20, y)); y += 20
-    for c in session.player.team:
-        st = "FAINTED" if c.is_fainted() else "OK"
-        surface.blit(font.render(f"  {c.name} Lv{c.level} HP:{c.hp}/{c.max_hp} [{st}]", True, C_WHITE), (20, y)); y += 18
+    team = session.player.team
+    tab = state.get("tab", 0)  # 0 = TEAM, 1 = BAG
+    team_cursor = min(state.get("creature_cursor", 0), max(0, len(team) - 1))
+    active = session.player.active_creature()
+
+    # ---------- TEAM panel (horizontal cards) ----------
+    y = 46
+    label_color = C_HIGHLIGHT if tab == 0 else C_GREY
+    surface.blit(font.render("YOUR TEAM", True, label_color), (20, y))
+    y += 26
+    if team:
+        x = 20
+        card_w = 104
+        for i, c in enumerate(team):
+            selected = (tab == 0 and i == team_cursor)
+            _draw_creature_card(surface, session, assets, font, c, x, y, card_w, selected,
+                                c is active)
+            x += card_w + 8
+    else:
+        surface.blit(font.render("No creatures!", True, C_WHITE), (20, y))
+
+    # ---------- BAG panel ----------
+    y = 168
+    label_color = C_HIGHLIGHT if tab == 1 else C_GREY
+    surface.blit(font.render("BAG", True, label_color), (20, y))
+    y += 26
+
+    # Build item rows: consumables, then key items, then HMs
+    rows = []
+    for it, cnt in sorted(inv.items.items()):
+        rows.append({"type": "item", "name": it, "count": cnt})
+    for ki in sorted(inv.key_items):
+        rows.append({"type": "key", "name": ki, "count": None})
+    for hm in sorted(inv.hms_obtained):
+        rows.append({"type": "hm", "name": hm, "count": None})
+
+    item_cursor = min(state.get("item_cursor", 0), max(0, len(rows) - 1)) if rows else 0
+    window = 6
+    start_row = max(0, min(item_cursor - window // 2, max(0, len(rows) - window - 1)))
+    for i in range(start_row, min(len(rows), start_row + window + 1)):
+        row = rows[i]
+        mark = "> " if (tab == 1 and i == item_cursor) else "  "
+        color = C_HIGHLIGHT if (tab == 1 and i == item_cursor) else C_WHITE
+        display = font.render(mark + row["name"].replace("_", " ").upper()
+                              + (f"  x{row['count']}" if row["count"] else ""), True, color)
+        surface.blit(display, (54, y + (i - start_row) * 20))
+        _draw_item_icon(surface, row["name"], 20, y + (i - start_row) * 20 + 2)
+    if not rows:
+        surface.blit(font.render("  (empty)", True, C_GREY), (54, y))
+
+    # ---------- Context instructions ----------
+    footer_y = y + max(0, min(len(rows), window + 1)) * 20 + 8 if rows else y + 8
+    status = state.get("status")
+    if tab == 0 and state.get("reorder"):
+        text = "REORDER MODE: arrows move this creature   Z/Enter=stop"
+    elif tab == 0:
+        text = "Arrows:select   R:reorder   Z/Enter:Potion on selected   TAB:Bag"
+    else:
+        item_name = rows[item_cursor]["name"] if rows else ""
+        if item_name == "potion":
+            text = "Potion heals the highlighted creature   T:teach HM   TAB:Team"
+        else:
+            text = "Arrows:select   Z/Enter:use   T:teach HM   TAB:Team"
+    surface.blit(font.render(text, True, C_GREY), (20, footer_y))
+    if status:
+        st = font.render(f"* {status}", True, C_HIGHLIGHT)
+        surface.blit(st, (20, footer_y + 18))
 
 
 def draw_hm_teach_menu(surface, session, font, hm_name, cursor):
@@ -1263,6 +1394,8 @@ def main():
     move_cursor = 0
     selected_char = None
     show_inv = False
+    inv_state = {"tab": 0, "item_cursor": 0, "creature_cursor": 0,
+                 "reorder": False, "status": None, "status_ticks": 0}
     dialogue_text = None
     dialogue_speaker = None
     collected_rumors = []
@@ -1350,6 +1483,16 @@ def main():
                         extractor.extract_creature_sprite(sp)
                         pf = characters[selected_char].get("sprite_prefix", "player")
                         assets.load_player(pf)
+                        assets.map_bg = None
+                        walker.reset()
+                        pending_encounter = None
+                        pending_final = False
+                        surf_transition = None
+                        rock_break_anim = None
+                        collected_rumors = []
+                        show_inv = False
+                        inv_state.update(tab=0, item_cursor=0, creature_cursor=0,
+                                         reorder=False, status=None, status_ticks=0)
                         map_name = available_maps[map_cursor]["name"]
                         dialogue_text = f"Adventure begins! Map: {map_name}"
                         dialogue_timer = 100
@@ -1376,22 +1519,92 @@ def main():
 
                 elif session.state == "EXPLORING":
                     if show_inv:
-                        if event.key == pygame.K_i:
+                        team = session.player.team
+                        inv = session.player.inventory
+                        if event.key in (pygame.K_i, pygame.K_ESCAPE):
                             show_inv = False
+                            inv_state["reorder"] = False
+                        elif event.key in (pygame.K_TAB, pygame.K_q):
+                            inv_state["tab"] = 1 - inv_state["tab"]
+                            inv_state["reorder"] = False
                         elif event.key == pygame.K_t:
-                            inv = session.player.inventory
-                            for hm in inv.hms_obtained:
-                                has_it = [c for c in session.player.team if
+                            for hm in sorted(inv.hms_obtained):
+                                has_it = [c for c in team if
                                           (hm == "cut" and c.can_cut) or
                                           (hm == "surf" and c.can_surf) or
                                           (hm == "rock_smash" and getattr(c, 'can_rock_smash', False)) or
                                           (hm == "strength" and getattr(c, 'can_strength', False))]
-                                if not has_it and session.player.team:
+                                if not has_it and team:
                                     pending_hm = hm
                                     hm_cursor = 0
                                     session.state = "TEACH_HM"
                                     show_inv = False
+                                    inv_state["reorder"] = False
                                     break
+                        elif inv_state["tab"] == 1:
+                            # ---- BAG panel ----
+                            rows = []
+                            for it, cnt in sorted(inv.items.items()):
+                                rows.append({"type": "item", "name": it, "count": cnt})
+                            for ki in sorted(inv.key_items):
+                                rows.append({"type": "key", "name": ki, "count": None})
+                            for hm in sorted(inv.hms_obtained):
+                                rows.append({"type": "hm", "name": hm, "count": None})
+                            if not rows:
+                                rows = [{"type": "none", "name": "", "count": None}]
+                            if event.key in (pygame.K_UP, pygame.K_w):
+                                inv_state["item_cursor"] = (inv_state["item_cursor"] - 1) % len(rows)
+                            elif event.key in (pygame.K_DOWN, pygame.K_s):
+                                inv_state["item_cursor"] = (inv_state["item_cursor"] + 1) % len(rows)
+                            elif event.key == pygame.K_LEFT:
+                                inv_state["tab"] = 0
+                            elif event.key in (pygame.K_z, pygame.K_RETURN):
+                                row = rows[inv_state["item_cursor"] % len(rows)]
+                                if row["type"] == "item" and row["name"] == "potion":
+                                    cidx = min(inv_state["creature_cursor"], max(0, len(team) - 1))
+                                    msg = session.use_potion_outside(cidx)
+                                    if msg:
+                                        inv_state["status"] = msg
+                                        inv_state["status_ticks"] = 150
+                                elif row["type"] == "item" and "ball" in row["name"]:
+                                    inv_state["status"] = "Can't use a Poké Ball here!"
+                                    inv_state["status_ticks"] = 150
+                                elif row["type"] == "key":
+                                    inv_state["status"] = "Key item — no use here."
+                                    inv_state["status_ticks"] = 150
+                                elif row["type"] == "hm":
+                                    inv_state["status"] = "Press T to teach this HM."
+                                    inv_state["status_ticks"] = 150
+                        else:
+                            # ---- TEAM panel ----
+                            if not team:
+                                inv_state["tab"] = 1
+                            elif inv_state["reorder"]:
+                                cidx = min(inv_state["creature_cursor"], len(team) - 1)
+                                if event.key == pygame.K_LEFT and cidx > 0:
+                                    team[cidx], team[cidx - 1] = team[cidx - 1], team[cidx]
+                                    inv_state["creature_cursor"] -= 1
+                                elif event.key == pygame.K_RIGHT and cidx < len(team) - 1:
+                                    team[cidx], team[cidx + 1] = team[cidx + 1], team[cidx]
+                                    inv_state["creature_cursor"] += 1
+                                elif event.key in (pygame.K_z, pygame.K_RETURN, pygame.K_r, pygame.K_x):
+                                    inv_state["reorder"] = False
+                            else:
+                                if event.key == pygame.K_LEFT:
+                                    if inv_state["creature_cursor"] == 0:
+                                        inv_state["tab"] = 1
+                                    else:
+                                        inv_state["creature_cursor"] -= 1
+                                elif event.key == pygame.K_RIGHT:
+                                    inv_state["creature_cursor"] = (inv_state["creature_cursor"] + 1) % len(team)
+                                elif event.key == pygame.K_r:
+                                    inv_state["reorder"] = True
+                                elif event.key in (pygame.K_z, pygame.K_RETURN):
+                                    cidx = min(inv_state["creature_cursor"], len(team) - 1)
+                                    msg = session.use_potion_outside(cidx)
+                                    if msg:
+                                        inv_state["status"] = msg
+                                        inv_state["status_ticks"] = 150
                         continue
                     if dialogue_text:
                         dialogue_text = None; dialogue_timer = 0
@@ -1509,9 +1722,18 @@ def main():
                                 dialogue_text = " | ".join(msgs[-2:]); dialogue_timer = 110
 
         # --- timer & IA update (3 min + centro) ---
-        if session.state == "EXPLORING" and session.player:
+        if show_inv and inv_state.get("status_ticks", 0) > 0:
+            inv_state["status_ticks"] -= 1
+            if inv_state["status_ticks"] <= 0:
+                inv_state["status"] = None
+        if (session.state in ("EXPLORING", "BATTLE") and session.player):
             dt = 1.0 / FPS
-            res = session.update(dt)
+            if session.state == "EXPLORING":
+                res = session.update(dt)
+            else:
+                # Timer keeps flowing during normal battles (not the final one):
+                # if it runs out, the center final battle starts.
+                res = session.tick_timer(dt)
             # session.update may have switched to FINAL_BATTLE and repositioned player
             if res is not None or session.state == "FINAL_BATTLE":
                 if session.state == "FINAL_BATTLE":
@@ -1654,7 +1876,7 @@ def main():
             draw_hud_bar(screen, session, font)
             draw_rumor_hud(screen, font, collected_rumors)
             if show_inv:
-                draw_inventory(screen, session, font)
+                draw_inventory(screen, session, assets, font, inv_state)
         elif session.state == "TEACH_HM":
             rock_break_anim = draw_map(screen, session, assets, camera, rock_break_anim)
             draw_npcs(screen, session, assets, camera)

@@ -5,6 +5,7 @@ All creature/move data read from ROM at runtime.
 """
 
 import json
+import math
 import os
 import random
 from rom_reader import RomReader, find_rom, _get_type_multiplier_int, TYPE_NAMES
@@ -45,7 +46,7 @@ _PHYSICAL_TYPES = {"normal", "fighting", "flying", "poison", "ground", "rock", "
 class Creature:
     def __init__(self, species_id, name, element, base_hp, base_atk, base_def,
                  base_spd, level=5, moves=None, element2=None,
-                 base_spatk=None, base_spdef=None):
+                 base_spatk=None, base_spdef=None, ability=None, catch_rate=200):
         self.species_id = species_id
         self.name = name
         self.element = element
@@ -58,6 +59,8 @@ class Creature:
         self.base_spdef = base_spdef if base_spdef is not None else base_def
         self.level = level
         self.moves = moves or []
+        self.ability = ability
+        self.catch_rate = catch_rate
         self.max_hp = self._calc_hp()
         self.hp = self.max_hp
         self.atk = self._calc_stat(base_atk)
@@ -165,7 +168,9 @@ def make_creature_from_rom(species_id, level, rom_reader):
         element=species_data["element"],
         base_hp=species_data["base_hp"], base_atk=species_data["base_atk"],
         base_def=species_data["base_def"], base_spd=species_data["base_spd"],
-        level=level, moves=move_objs
+        level=level, moves=move_objs,
+        ability=species_data.get("ability"),
+        catch_rate=species_data.get("catch_rate", 200) or 200,
     )
 
 
@@ -359,19 +364,46 @@ class BattleEngine:
         self.log.extend(msgs)
         return msgs
 
-    def try_capture(self, ball_bonus=1.0):
+    def try_capture(self, ball_bonus=10):
+        """Replicates the FireRed capture formula (Cmd_trytocatch in the ROM).
+
+        ball_bonus mirrors the ROM sBallCatchBonuses: Poke=10, Great=15, Ultra=20.
+        """
         if self.finished:
             return []
         self.anim_events = []
         if self.is_final:
             return ["Can't capture your rival's creature!"]
-        # Gen 3 catch formula simplified
-        hp_factor = (3 * self.enemy.max_hp - 2 * self.enemy.hp) / (3 * self.enemy.max_hp)
-        catch_rate = min(255, int(hp_factor * 200 * ball_bonus))
-        if random.randint(0, 255) < catch_rate:
+        enemy = self.enemy
+        # odds = (catchRate * ballBonus) * (3*maxHP - 2*curHP) / (3*maxHP),
+        # integer math exactly as in the ROM.
+        catch_rate = max(1, getattr(enemy, "catch_rate", 200))
+        odds = (catch_rate * ball_bonus // 10)
+        odds = odds * (3 * enemy.max_hp - 2 * enemy.hp) // (3 * enemy.max_hp)
+        status = getattr(enemy, "status", None)
+        if status in ("sleep", "freeze"):
+            odds *= 2
+        elif status in ("poison", "burn", "paralysis"):
+            odds = odds * 15 // 10
+        if odds > 254:
             self.finished = True
             self.result = "captured"
-            return [f"Gotcha! {self.enemy.name} was captured!"]
+            return [f"Gotcha! {enemy.name} was captured!"]
+        # Shake check: odds = 1048560 / sqrt(sqrt(16711680 / odds)); 3 rolls.
+        if odds > 0:
+            shake_odds = 1048560 // math.isqrt(math.isqrt(16711680 // odds))
+        else:
+            shake_odds = 0
+        shakes = 0
+        while shakes < 3:
+            if random.randint(0, 65535) < shake_odds:
+                shakes += 1
+            else:
+                break
+        if shakes >= 3:
+            self.finished = True
+            self.result = "captured"
+            return [f"Gotcha! {enemy.name} was captured!"]
         e_move = random.choice(self.enemy.moves)
         msgs = ["It broke free!"]
         msgs += self._do_attack(self.enemy, self.player, e_move)
@@ -603,6 +635,23 @@ class GameSession:
         """Start with chosen character + starter. Random spawn or chosen map."""
         self.seed = seed if seed is not None else random.randint(0, 99999)
         self.rng = random.Random(self.seed)
+
+        # Reset run-specific state from any previous run (a new game is started
+        # from VICTORY/GAME_OVER without closing the app).
+        self.npc_gifts_given = set()
+        self.cut_tiles_removed = set()
+        self.removed_rocks = set()
+        self.pushed_boulders = set()
+        self.final_battle_index = 0
+        self.previous_map_key = None
+        self.previous_map_pos = (0, 0)
+        self.battle = None
+        self.state = "EXPLORING"
+        self.ai_log = []
+        self.ai_waypoints = []
+        self.ai_waypoint_index = 0
+        self.ai_has_cut = True
+        self.ai_has_surf = True
 
         starter = make_creature_from_rom(starter_species_id, 5, self.rom)
         char_data = self.characters[character_id]
@@ -1297,14 +1346,33 @@ class GameSession:
 
     def use_potion_outside(self, creature_idx):
         """Use a potion on a creature outside of battle."""
-        if not self.player.inventory.use_item("potion"):
+        if not self.player.inventory.has_item("potion"):
             return "No potions left!"
         if 0 <= creature_idx < len(self.player.team):
-            self.player.team[creature_idx].heal(20)
-            return f"{self.player.team[creature_idx].name} healed!"
+            c = self.player.team[creature_idx]
+            if c.hp >= c.max_hp:
+                return f"{c.name} is already at full HP!"
+            self.player.inventory.use_item("potion")
+            c.heal(20)
+            return f"{c.name} healed 20 HP!"
         return "Invalid creature."
 
     # ---------- Timer & IA (Blue) & centro mappa -----------------------------
+
+    def tick_timer(self, dt):
+        """Make the 3-minute timer flow even during normal battles.
+
+        The final battle is excluded: it is only triggered when the timer or
+        the arena goal is reached, so once it starts it no longer counts down.
+        Returns the same result dict as update() if it triggers the center fight.
+        """
+        if self.state in ("FINAL_BATTLE",) or self.player is None or self.timer <= 0:
+            return None
+        self.timer -= dt
+        if self.timer <= 0:
+            self.timer = 0
+            return self._trigger_center_battle("time_up")
+        return None
 
     def update(self, dt):
         """Chiamato ogni frame da frontend quando in EXPLORING: aggiorna timer e muove IA."""
