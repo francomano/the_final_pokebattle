@@ -30,7 +30,7 @@
       "TTTgggggggTTT.dd.TTTgggggggTTT",
       "TTTgggggggTTT.dd.TTTgggggggTTT",
       "TTTTTTTTTTTTT.dd.TTTgggggggTTT",
-      "TTTTTTTTTTTTNddddTTTTTTTTTTTTT"
+      "TTTTTTTTTTTTdddddTTTTTTTTTTTTT"
     ],
     "encounter_tiles": [
       "g"
@@ -115,12 +115,6 @@
         "text": "Rumor: The rival always carries Potions!",
         "is_rumor": true,
         "reveal": "items"
-      },
-      {
-        "x": 12,
-        "y": 21,
-        "text": "South exit: River Area ahead!",
-        "is_rumor": false
       }
     ]
   },
@@ -130,7 +124,7 @@
     "height": 15,
     "background": "forest/river_area_rendered.png",
     "layout": [
-      "............Ndddd.............",
+      ".............dddd.............",
       "..ggggggg.....dd......qwert...",
       "..gggggggTT...dd......asfkl...",
       "..ggggggg.N..ddd......xvuip...",
@@ -231,12 +225,6 @@
         "text": "Rumor: The rival has 3 creatures in his team!",
         "is_rumor": true,
         "reveal": "team_size"
-      },
-      {
-        "x": 12,
-        "y": 0,
-        "text": "North: Forest lies beyond.",
-        "is_rumor": false
       }
     ],
     "fishing_creatures": [
@@ -273,11 +261,11 @@
     "background": "forest/forest_north_rendered.png",
     "layout": [
       "TTTTTTTTT....YZ!.....TTTTTTTTT",
-      "TTTTTTTTT.N..UVX.....TTTTTTTTT",
+      "TTTTTTTTT....UVX.....TTTTTTTTT",
       "TTTTTTTTT....QGP.....TTTTTTTTT",
       "TTTTTTTTT............TTTTTTTTT",
       "TTTggggggg...........gggggggTT",
-      "TTTggggggg....Nd.....gggggggTT",
+      "TTTggggggg.....d.....gggggggTT",
       "TTTgggggggTTT.dd.TTTTgggggggTT",
       "TTTgggNggg....dd.....gggggggTT",
       "TTTgggddddddddddddddddddggggdd",
@@ -289,11 +277,11 @@
       "TTTgggggggTTT.dd.TTTTgggggggTT",
       "TTTgggggggTTT.dd.TTTTgggggggTT",
       "TTTgggggggTTT.dd.TTTTgggggggTT",
-      "TTTgggggggTTTTNd.TTTTgggggggTT",
+      "TTTgggggggTTTTTd.TTTTgggggggTT",
       "TTTgggggggTTT.dd.TTTTgggggggTT",
       "TTTgggggggTTTTCCCTTTTgggggggTT",
       "TTTgggggggTTT.dd.TTTTgggggggTT",
-      "TTTTTTTTTTTTNddddTTTTTTTTTTTTT"
+      "TTTTTTTTTTTTdddddTTTTTTTTTTTTT"
     ],
     "cut_tiles": [
       "C"
@@ -341,32 +329,11 @@
     ],
     "signs": [
       {
-        "x": 14,
-        "y": 5,
-        "text": "Mystery Cave ahead! You need HM CUT to proceed."
-      },
-      {
-        "x": 14,
-        "y": 17,
-        "text": "Trees block the path. You need CUT!"
-      },
-      {
-        "x": 10,
-        "y": 1,
-        "text": "MYSTERY CAVE - Brave explorers only!"
-      },
-      {
         "x": 6,
         "y": 7,
         "text": "Rumor: The rival's strongest is around Lv15. Prepare well!",
         "is_rumor": true,
         "reveal": "location"
-      },
-      {
-        "x": 12,
-        "y": 21,
-        "text": "South exit: Forest South ahead!",
-        "is_rumor": false
       }
     ],
     "wild_creatures": [
@@ -557,13 +524,7 @@
         "gives": "old_rod_and_surf"
       }
     ],
-    "signs": [
-      {
-        "x": 4,
-        "y": 8,
-        "text": "A path leads back to the river. You can return to the forest from there."
-      }
-    ],
+    "signs": [],
     "portals": [
       {
         "x": 8,
@@ -654,8 +615,7 @@
       {
         "x": 12,
         "y": 2,
-        "item": "HM01_CUT",
-        "name": "HM01 Cut"
+        "item": "HM01_CUT"
       }
     ],
     "exit": {
@@ -680,7 +640,8 @@
       "I",
       "W",
       "."
-    ]
+    ],
+    "signs": []
   },
   "house_interior": {
     "name": "Forest House",
@@ -702,8 +663,7 @@
       {
         "x": 4,
         "y": 2,
-        "item": "pokeball",
-        "name": "Pok\u00e9 Ball"
+        "item": "ball"
       }
     ],
     "items_on_talk": [],
@@ -720,7 +680,8 @@
     "dynamic_exit": {
       "x": 4,
       "y": 6
-    }
+    },
+    "signs": []
   },
   "house_river": {
     "name": "Ranger Hut",
@@ -761,7 +722,8 @@
     "dynamic_exit": {
       "x": 4,
       "y": 6
-    }
+    },
+    "signs": []
   },
   "rock_desert": {
     "name": "Rock Desert",
@@ -897,14 +859,12 @@
       {
         "x": 11,
         "y": 19,
-        "item": "potion",
-        "name": "Potion"
+        "item": "potion"
       },
       {
         "x": 9,
         "y": 17,
-        "item": "pokeball",
-        "name": "Pokeball"
+        "item": "ball"
       }
     ],
     "signs": [],
@@ -1007,7 +967,8 @@
         "dest_x": 14,
         "dest_y": 3
       }
-    ]
+    ],
+    "signs": []
   },
   "rock_desert_arena": {
     "name": "Rock Arena",
@@ -1097,8 +1058,7 @@
       {
         "x": 14,
         "y": 11,
-        "item": "potion",
-        "name": "Potion"
+        "item": "potion"
       }
     ],
     "signs": [],
@@ -1308,6 +1268,7 @@
       "T.......T",
       "T.......T",
       "T...D...T"
-    ]
+    ],
+    "signs": []
   }
 }

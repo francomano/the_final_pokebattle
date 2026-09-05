@@ -452,7 +452,7 @@ def draw_map(surface, session, assets, camera, rock_break_anim=None):
                 elif orig_ch == "R" and ch == "z":
                     # Rock was broken: sample the nearest authored sand tile
                     # from the ROM-rendered background.  The generic sprite
-                    # fallback was a mismatched building/Pokecenter fragment.
+                    # fallback was a mismatched building fragment.
                     source = None
                     for radius in range(1, max(len(layout), len(layout[0]))):
                         for dy in range(-radius, radius + 1):
@@ -479,7 +479,7 @@ def draw_map(surface, session, assets, camera, rock_break_anim=None):
                     tile_surf = assets.get_tile("R")
                     surface.blit(tile_surf, (sx, sy))
                 elif ch == "I":
-                    # Item still present - draw pokeball overlay
+                    # Item still present - draw item overlay
                     tile_surf = assets.get_tile("I")
                     surface.blit(tile_surf, (sx, sy))
                 elif orig_ch == "N":
@@ -745,7 +745,8 @@ def draw_hud_bar(surface, session, font):
         t = font.render(f"{active.name} Lv{active.level} HP:{active.hp}/{active.max_hp}", True, C_WHITE)
         surface.blit(t, (10, hud_y + 5))
     inv = session.player.inventory
-    itxt = f"Balls:{inv.items.get('pokeball',0)} Potions:{inv.items.get('potion',0)}"
+    itxt = f"{session.item_name('ball')}:{inv.items.get('ball',0)}"
+    itxt += f" {session.item_name('potion')}:{inv.items.get('potion',0)}"
     if inv.has_item("old_rod"): itxt += " Rod:Y"
     hms = []
     if inv.has_hm("cut"): hms.append("CUT")
@@ -756,27 +757,54 @@ def draw_hud_bar(surface, session, font):
     surface.blit(font.render("Arrows:Move Z:Talk X:Fish I:Inv ESC:Quit", True, C_GREY), (10, hud_y + 70))
 
 def draw_rumor_hud(surface, font, rumors):
-    """Draw collected rumors in top-right corner."""
+    """Draw collected rumors in top-right corner (wrapped, no truncation)."""
     if not rumors:
         return
     max_display = 3  # show last 3 rumors
     recent = rumors[-max_display:]
-    box_w = 280
-    box_h = 20 + len(recent) * 18
+    box_w = 320
+    pad = 5
+    bullet_w = font.size("• ")[0]
+    avail = box_w - 2 * pad - bullet_w - 6
+    wrapped = []
+    for r in recent:
+        raw = r.replace("Rumor: ", "").replace("Rumor:", "")
+        lines, cur = [], ""
+        for w in raw.split():
+            t = cur + " " + w if cur else w
+            if font.size(t)[0] < avail:
+                cur = t
+            else:
+                lines.append(cur); cur = w
+        if cur: lines.append(cur)
+        if not lines:
+            lines = [""]
+        wrapped.append(lines)
+    max_total = 9  # cap total lines so the HUD stays on screen
+    while sum(len(l) for l in wrapped) > max_total:
+        if len(wrapped[0]) > 1:
+            wrapped[0] = wrapped[0][1:]
+        elif len(wrapped) > 1:
+            wrapped.pop(0)
+        else:
+            wrapped[0] = wrapped[0][-max_total:]
+            break
+    total_lines = sum(len(l) for l in wrapped)
+    box_h = 20 + total_lines * 18
     box_x = SCREEN_W - box_w - 5
     box_y = 60
     s = pygame.Surface((box_w, box_h), pygame.SRCALPHA)
     s.fill((0, 0, 0, 160))
     surface.blit(s, (box_x, box_y))
     header = font.render("RIVAL INTEL", True, (255, 200, 50))
-    surface.blit(header, (box_x + 5, box_y + 2))
-    for i, r in enumerate(recent):
-        # Strip "Rumor: " prefix
-        txt = r.replace("Rumor: ", "").replace("Rumor:", "")
-        if len(txt) > 35:
-            txt = txt[:33] + ".."
-        line = font.render(f"• {txt}", True, (200, 200, 200))
-        surface.blit(line, (box_x + 5, box_y + 20 + i * 18))
+    surface.blit(header, (box_x + pad, box_y + 2))
+    y = box_y + 20
+    for lines in wrapped:
+        for i, l in enumerate(lines):
+            prefix = "• " if i == 0 else "  "
+            line_txt = font.render(prefix + l, True, (200, 200, 200))
+            surface.blit(line_txt, (box_x + pad, y))
+            y += 18
 
 
 # ---------- Battle Move Animations ------------------------------------------
@@ -982,7 +1010,7 @@ class BattleAnimator:
 
 
 class CaptureAnimator:
-    """A programmatic Poké Ball throw + shake animation for capture attempts.
+    """A programmatic throw + shake animation for capture attempts.
 
     Timeline (ticks):
       0..18        THROW: ball flies in an arc from the player to the enemy's center.
@@ -1178,8 +1206,8 @@ def _draw_item_icon(surface, name, x, y, size=28):
         pygame.draw.rect(icon, (180, 90, 120), (size//2-2, size//2-8, 4, 2))
         pygame.draw.rect(icon, (240, 150, 180), (size//2-4, size//2-5, 8, 14))
         pygame.draw.circle(icon, (200, 120, 150), (size//2, size//2+8), 3)
-    elif "ball" in name or "rock_ball" in name:
-        # red/white pokeball
+    elif "ball" in name:
+        # red/white capture device
         pygame.draw.circle(icon, (230, 60, 60), (size//2, size//2-2), size//2-3)
         pygame.draw.circle(icon, (255, 255, 255), (size//2, size//2+2), size//2-3)
         pygame.draw.rect(icon, (40, 40, 40), (size//2-1, size//2-10, 2, size-8))
@@ -1322,11 +1350,11 @@ def draw_inventory(surface, session, assets, font, state):
     # Build item rows: consumables, then key items, then HMs
     rows = []
     for it, cnt in sorted(inv.items.items()):
-        rows.append({"type": "item", "name": it, "count": cnt})
+        rows.append({"type": "item", "name": session.item_name(it), "key": it, "count": cnt})
     for ki in sorted(inv.key_items):
-        rows.append({"type": "key", "name": ki, "count": None})
+        rows.append({"type": "key", "name": session.item_name(ki), "key": ki, "count": None})
     for hm in sorted(inv.hms_obtained):
-        rows.append({"type": "hm", "name": hm, "count": None})
+        rows.append({"type": "hm", "name": session.item_name(hm), "key": hm, "count": None})
 
     item_cursor = min(state.get("item_cursor", 0), max(0, len(rows) - 1)) if rows else 0
     window = 6
@@ -1338,7 +1366,7 @@ def draw_inventory(surface, session, assets, font, state):
         sel = (tab == 1 and i == item_cursor)
         mark = "> " if sel else "  "
         color = C_HIGHLIGHT if sel else C_WHITE
-        display = font.render(mark + row["name"].replace("_", " ").upper()
+        display = font.render(mark + row["name"]
                               + (f"  x{row['count']}" if row["count"] else ""), True, color)
         ry = y + (i - start_row) * 22
         surface.blit(display, (54, ry + 2))
@@ -1372,8 +1400,17 @@ def draw_inventory(surface, session, assets, font, state):
     if show_reorder and tab == 0:
         status = "REORDERING: < > moves this creature,  Z / Enter to stop"
     if status:
-        st = font.render(f"* {status}", True, C_HIGHLIGHT)
-        surface.blit(st, (24, ly + 18))
+        st_lines, scur = [], ""
+        for w in status.split():
+            t = scur + " " + w if scur else w
+            if font.size(t)[0] < SCREEN_W - 60:
+                scur = t
+            else:
+                st_lines.append(scur); scur = w
+        if scur: st_lines.append(scur)
+        for i, sl in enumerate(st_lines[:2]):
+            st = font.render(f"* {sl}", True, C_HIGHLIGHT)
+            surface.blit(st, (24, ly + box_h + 10 + i * 18))
 
 
 def draw_hm_teach_menu(surface, session, font, hm_name, cursor):
@@ -1407,14 +1444,7 @@ def draw_hm_teach_menu(surface, session, font, hm_name, cursor):
 
 
 def draw_dialogue(surface, text, font, speaker=None):
-    bh = 72
-    by = SCREEN_H - bh - 5
-    box = pygame.Rect(5, by, SCREEN_W - 10, bh)
-    pygame.draw.rect(surface, C_PANEL, box)
-    pygame.draw.rect(surface, C_WHITE, box, 2)
-    yo = 6
-    if speaker:
-        surface.blit(font.render(speaker, True, C_HIGHLIGHT), (12, by + yo)); yo += 17
+    line_h = 17
     words = text.split()
     lines, cur = [], ""
     for w in words:
@@ -1424,8 +1454,20 @@ def draw_dialogue(surface, text, font, speaker=None):
         else:
             lines.append(cur); cur = w
     if cur: lines.append(cur)
-    for i, l in enumerate(lines[:3]):
-        surface.blit(font.render(l, True, C_WHITE), (12, by + yo + i * 17))
+    max_lines = 8
+    if len(lines) > max_lines:
+        lines = lines[:max_lines]
+    bh = 6 + (17 if speaker else 0) + len(lines) * line_h + 4
+    bh = max(72, bh)
+    by = SCREEN_H - bh - 5
+    box = pygame.Rect(5, by, SCREEN_W - 10, bh)
+    pygame.draw.rect(surface, C_PANEL, box)
+    pygame.draw.rect(surface, C_WHITE, box, 2)
+    yo = 6
+    if speaker:
+        surface.blit(font.render(speaker, True, C_HIGHLIGHT), (12, by + yo)); yo += line_h
+    for i, l in enumerate(lines):
+        surface.blit(font.render(l, True, C_WHITE), (12, by + yo + i * line_h))
 
 
 def draw_char_select(surface, font, characters, assets, cursor, char_ids):
@@ -1731,13 +1773,13 @@ def main():
                             # ---- BAG panel (list below the team) ----
                             rows = []
                             for it, cnt in sorted(inv.items.items()):
-                                rows.append({"type": "item", "name": it, "count": cnt})
+                                rows.append({"type": "item", "name": session.item_name(it), "key": it, "count": cnt})
                             for ki in sorted(inv.key_items):
-                                rows.append({"type": "key", "name": ki, "count": None})
+                                rows.append({"type": "key", "name": session.item_name(ki), "key": ki, "count": None})
                             for hm in sorted(inv.hms_obtained):
-                                rows.append({"type": "hm", "name": hm, "count": None})
+                                rows.append({"type": "hm", "name": session.item_name(hm), "key": hm, "count": None})
                             if not rows:
-                                rows = [{"type": "none", "name": "", "count": None}]
+                                rows = [{"type": "none", "name": "", "key": "", "count": None}]
                             if event.key in (pygame.K_UP, pygame.K_w):
                                 if inv_state["item_cursor"] == 0:
                                     inv_state["tab"] = 0
@@ -1749,14 +1791,14 @@ def main():
                                 inv_state["tab"] = 0
                             elif event.key in (pygame.K_z, pygame.K_RETURN):
                                 row = rows[inv_state["item_cursor"] % len(rows)]
-                                if row["type"] == "item" and row["name"] == "potion":
+                                if row["type"] == "item" and row["key"] == "potion":
                                     cidx = min(inv_state["creature_cursor"], max(0, len(team) - 1))
                                     msg = session.use_potion_outside(cidx)
                                     if msg:
                                         inv_state["status"] = msg
                                         inv_state["status_ticks"] = 150
-                                elif row["type"] == "item" and "ball" in row["name"]:
-                                    inv_state["status"] = "Can't use a Poké Ball here!"
+                                elif row["type"] == "item" and "ball" in row["key"]:
+                                    inv_state["status"] = f"Can't use a {row['name']} here!"
                                     inv_state["status_ticks"] = 150
                                 elif row["type"] == "key":
                                     inv_state["status"] = "Key item — no use here."
@@ -1900,8 +1942,8 @@ def main():
                         if act == "capture" and not is_final:
                             # Only START the throw: the capture is resolved when
                             # the animation finishes, with the same pre-rolled shakes.
-                            if not session.player.inventory.has_item("pokeball"):
-                                dialogue_text = "No Poké Balls left!"; dialogue_timer = 110
+                            if not session.player.inventory.has_item("ball"):
+                                dialogue_text = f"No {session.item_name('ball')} left!"; dialogue_timer = 110
                             else:
                                 capture_shakes = session.battle.roll_capture()
                                 capture_anim = CaptureAnimator(
@@ -1909,7 +1951,7 @@ def main():
                                     BattleAnimator.ENEMY_POS,
                                     shakes=capture_shakes,
                                     success=capture_shakes >= 3)
-                                session.battle.log.append("You threw a Poké Ball!")
+                                session.battle.log.append(f"You threw a {session.item_name('ball')}!")
                                 battle_cursor = 0; move_cursor = 0
                         else:
                             msgs = session.battle_action(act, move_cursor if act == "attack" else 0)
@@ -2003,7 +2045,7 @@ def main():
                             dialogue_timer = 60
                         else:
                             if result.get("surf_mount") or result.get("surf_dismount"):
-                                # Getting on/off the Pokemon: glide onto the
+                                # Getting on/off the creature: glide onto the
                                 # tile while showing the boarding frame for the
                                 # whole step.
                                 surf_transition = {

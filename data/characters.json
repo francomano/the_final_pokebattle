@@ -8,7 +8,7 @@
     ],
     "starting_items": [
       {"item": "potion", "count": 3},
-      {"item": "pokeball", "count": 5}
+      {"item": "ball", "count": 5}
     ]
   },
   "blue": {
@@ -20,7 +20,7 @@
     ],
     "starting_items": [
       {"item": "potion", "count": 2},
-      {"item": "pokeball", "count": 6}
+      {"item": "ball", "count": 6}
     ]
   },
   "leaf": {
@@ -32,7 +32,7 @@
     ],
     "starting_items": [
       {"item": "potion", "count": 4},
-      {"item": "pokeball", "count": 4}
+      {"item": "ball", "count": 4}
     ]
   },
   "brock": {
@@ -46,7 +46,7 @@
     ],
     "starting_items": [
       {"item": "potion", "count": 3},
-      {"item": "pokeball", "count": 4}
+      {"item": "ball", "count": 4}
     ]
   }
 }

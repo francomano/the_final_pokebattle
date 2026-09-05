@@ -18,6 +18,7 @@ OFFSET_BATTLE_MOVES = 0x250C04     # 12 bytes per move
 OFFSET_LEARNSETS = 0x25D7B4        # 4 bytes per species (pointer table)
 OFFSET_MAP_GROUPS = 0x3526A8       # pointer table to map group arrays
 OFFSET_ABILITIES_NAMES = 0x24FC40  # 78 abilities x 13 bytes (index = ability id)
+OFFSET_ITEM_NAMES = 0x3DB028       # 44 bytes per item record; name in first 14 bytes
 
 BASE_STATS_SIZE = 28
 ABILITY_NAME_LEN = 13
@@ -27,6 +28,9 @@ MOVE_NAME_LEN = 13
 BATTLE_MOVE_SIZE = 12
 NUM_SPECIES = 412
 NUM_MOVES = 355
+ITEM_RECORD_SIZE = 44
+ITEM_NAME_LEN = 14
+NUM_ITEMS = 420
 
 # HM compatibility extracted from FireRed ROM (tmhm_learnsets.h)
 HM_COMPAT = {
@@ -154,6 +158,8 @@ class RomReader:
                 result.append('-')
             elif b == 0xAE:
                 result.append('-')
+            elif b == 0x1B:  # accented é used in item names, read from ROM
+                result.append('é')
             else:
                 result.append('')
         return ''.join(result).strip()
@@ -208,6 +214,15 @@ class RomReader:
         stats["element2"] = TYPE_NAMES[type2_idx] if type2_idx < len(TYPE_NAMES) else "normal"
         stats["ability"] = self.read_ability_name(stats.get("ability1"))
         return stats
+
+    # ---------- item data ---------------------------------------------------
+
+    def read_item_name(self, item_id):
+        """Read an item's display name from the ROM by its item id."""
+        if item_id < 0 or item_id >= NUM_ITEMS:
+            return None
+        offset = OFFSET_ITEM_NAMES + item_id * ITEM_RECORD_SIZE
+        return self._decode_text(self.data[offset:offset + ITEM_NAME_LEN])
 
     # ---------- move data ---------------------------------------------------
 

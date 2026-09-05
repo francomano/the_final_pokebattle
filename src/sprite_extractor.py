@@ -459,7 +459,7 @@ class SpriteExtractor:
         self.extract_surf_blob()
 
     def extract_surf_blob(self):
-        """Extract FireRed's animated 32x32 Surf Pokémon/blob field effect.
+        """Extract FireRed's animated 32x32 Surf creature/blob field effect.
 
         The rider sheets contain only the trainer.  In game, the actual mount
         is a separate field-effect sprite, so it must be extracted and drawn

@@ -42,6 +42,29 @@ class Move:
 # Physical types in Gen 3 (everything before TYPE_MYSTERY=9 is physical)
 _PHYSICAL_TYPES = {"normal", "fighting", "flying", "poison", "ground", "rock", "bug", "ghost", "steel"}
 
+# Item identifiers used by the game mapped to their FireRed item ids.
+ITEM_IDS = {
+    "potion": 13,
+    "ball": 4,
+    "old_rod": 262,
+    "cut": 339,         # HM01
+    "surf": 340,        # HM02
+    "strength": 342,    # HM04
+    "rock_smash": 344,  # HM06
+    "HM01_CUT": 339,
+    "HM02_SURF": 340,
+}
+
+
+def item_display_name(item_key, rom=None):
+    """Display name of an item, read from the ROM at runtime (like creature names)."""
+    item_id = ITEM_IDS.get(item_key, item_key)
+    if isinstance(item_id, int) and rom is not None:
+        name = rom.read_item_name(item_id)
+        if name:
+            return name
+    return f"{item_key}".replace("_", " ").upper()
+
 
 class Creature:
     def __init__(self, species_id, name, element, base_hp, base_atk, base_def,
@@ -369,7 +392,7 @@ class BattleEngine:
 
         Mirror of the FireRed formula; returns the number of consecutive
         successful shake rolls (0..3). 3 = captured. The front end uses this to
-        preview how many shakes the Poké Ball animation should show, then hands
+        preview how many shakes the capture animation should show, then hands
         the same value back to try_capture() so result and animation agree.
         """
         if self.is_final or self.finished:
@@ -400,7 +423,7 @@ class BattleEngine:
     def try_capture(self, ball_bonus=10, pre_shakes=None):
         """Replicates the FireRed capture formula (Cmd_trytocatch in the ROM).
 
-        ball_bonus mirrors the ROM sBallCatchBonuses: Poke=10, Great=15, Ultra=20.
+        ball_bonus mirrors the ROM sBallCatchBonuses (10/15/20).
         `pre_shakes` (from roll_capture) makes the outcome match the animation.
         """
         if self.finished:
@@ -641,6 +664,10 @@ class GameSession:
         self.rom = RomReader(rom_path)
         self.map_data = load_json("maps.json")
         self.characters = load_json("characters.json")
+
+    def item_name(self, item_key):
+        """Display name of an item, read from the ROM at runtime."""
+        return item_display_name(item_key, self.rom)
 
     def start_game(self, character_id, starter_species_id, seed=None, map_key=None):
         """Start with chosen character + starter. Random spawn or chosen map."""
@@ -948,7 +975,7 @@ class GameSession:
 
         surf = {"mount": False, "dismount": False}
 
-        # Water requires SURF and mounts the Pokemon on first contact
+        # Water requires SURF and mounts the creature on first contact
         if tile == 'w':
             if not self.player.has_surf():
                 return {"blocked": True, "reason": "need_surf"}
@@ -976,7 +1003,7 @@ class GameSession:
             return {"blocked": True}
 
         else:
-            # Stepping from water onto land -> get off the Pokemon
+            # Stepping from water onto land -> get off the creature
             if self.player.surfing:
                 self.player.surfing = False
                 surf["dismount"] = True
@@ -1026,7 +1053,7 @@ class GameSession:
                 row_list = list(current_map["layout"][new_y])
                 row_list[new_x] = "d"
                 current_map["layout"][new_y] = "".join(row_list)
-                return {"moved": True, "tile": tile, "pickup": True, "item_name": gi.get("name", item_id)}
+                return {"moved": True, "tile": tile, "pickup": True, "item_name": self.item_name(item_id)}
         # Check for encounters
         encounter_tiles = current_map.get("encounter_tiles", ["g"])
         if tile in encounter_tiles:
@@ -1275,10 +1302,10 @@ class GameSession:
         elif action == "flee":
             msgs = self.battle.try_flee()
         elif action == "capture":
-            if self.player.inventory.use_item("pokeball"):
+            if self.player.inventory.use_item("ball"):
                 msgs = self.battle.try_capture(pre_shakes=capture_shakes)
             else:
-                msgs = ["No balls left!"]
+                msgs = [f"No {self.item_name('ball')} left!"]
         elif action == "potion":
             if self.player.inventory.use_item("potion"):
                 self.battle.player.heal(20)
