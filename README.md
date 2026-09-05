@@ -1,6 +1,8 @@
 # The Final PokéBattle
 
-> A fully online MMO RPG: drop straight into the adventure map, explore, and clash in a final showdown — built with Python and Pygame, reading creature data from a GBA ROM.
+> A fully online MMO RPG: drop straight into the adventure map, explore, and clash in a final showdown — built with Python and Pygame, reading creature data from a **Pokémon Fire Red** GBA ROM.
+
+`pokemon` `gba` `rom-hack` `firered` `mmorpg` `pygame` `python`
 
 **Version 0.2 — PROTOTYPE**
 
@@ -14,7 +16,7 @@ The Final PokéBattle is a **fully online MMO RPG**. There is no preparation pha
 
 The game is **not** a ROM hack — it uses the ROM purely as a data source for creature stats, moves, types and sprites. All game logic, rendering, maps and overworld behavior are original.
 
-The full design lives in [`idea.txt`](idea.txt). This README describes the **offline prototype** that is currently being built toward that vision: it mirrors the online rules as a single-player practice mode, and the online server is a later milestone.
+This README describes the **offline prototype** that is currently being built toward that vision: it mirrors the online rules as a single-player practice mode, and the online server is a later milestone.
 
 ### What exists today (offline prototype)
 
@@ -26,7 +28,7 @@ The full design lives in [`idea.txt`](idea.txt). This README describes the **off
 - **Facce allenatori in HUD** — trainer front pics taken only from the user's ROM, shown top-left (player) and top-right (rival).
 - Night mode with darkened palettes and all sprites/tiles taken only from the user's ROM.
 
-### Not yet implemented (planned, see idea.txt)
+### Not yet implemented (planned)
 
 - The online server (chat, clue loading, keeping only the winner).
 - More character unlocks beyond Blue.
@@ -84,7 +86,7 @@ A single-player practice mode mirroring the online rules:
 
 - Python 3.10+
 - Pygame 2.x
-- A legally obtained GBA ROM file (user provides their own, not included)
+- A legally obtained **Pokémon Fire Red** (U) GBA ROM — user provides their own, not included
 
 ```bash
 pip install pygame
@@ -95,7 +97,7 @@ pip install pygame
 ## Quick Start
 
 ```bash
-# 1. Place your ROM file in the project root (any .gba file)
+# 1. Place your Pokémon Fire Red ROM file in the project root (.gba)
 # 2. Run the game
 python src/frontend.py
 ```
@@ -122,11 +124,10 @@ the_final_pokebattle/
 ├── .gitignore
 ├── README.md
 ├── CONTRIBUTING.md
-└── idea.txt                 # Original game design notes
 ```
 
 > **Not committed**: `assets/`, `.sprite_cache/`, `screenshots/`  
-> **User-provided** (not committed): ROM file (`.gba`) — all game data and sprites are taken only from this file
+> **User-provided** (not committed): Pokémon Fire Red `.gba` ROM — all game data and sprites are extracted from this file at runtime
 
 ---
 

@@ -8,6 +8,6 @@
 
 ## Status
 
-The project has pivoted to a **fully online MMO RPG** (see `idea.txt` / `README.md`). The contribution guidelines, task roadmap and technical conventions are being reworked to reflect this direction. Details will be added here once they are settled.
+The project has pivoted to a **fully online MMO RPG** (see `README.md`). The contribution guidelines, task roadmap and technical conventions are being reworked to reflect this direction. Details will be added here once they are settled.
 
 (Was: # Contributing to The Final PokéBattle — previous content intentionally cleared.)
