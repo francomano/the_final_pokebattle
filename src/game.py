@@ -7,7 +7,7 @@ All creature/move data read from ROM at runtime.
 import json
 import os
 import random
-from rom_reader import RomReader, find_rom, get_type_multiplier, TYPE_NAMES
+from rom_reader import RomReader, find_rom, _get_type_multiplier_int, TYPE_NAMES
 
 # ---------- paths ----------------------------------------------------------
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -80,7 +80,8 @@ class Creature:
 
     def get_effective_stat(self, stat_name):
         """Get stat value with stage modifier applied."""
-        base_val = getattr(self, stat_name, 0)
+        attr = "defense" if stat_name == "def" else stat_name
+        base_val = getattr(self, attr, 0)
         stage = self.stat_stages.get(stat_name, 6)
         ratios = [(10,40),(10,35),(10,30),(10,25),(10,20),(10,15),
                   (10,10),(15,10),(20,10),(25,10),(30,10),(35,10),(40,10)]
@@ -140,7 +141,8 @@ def make_creature_from_rom(species_id, level, rom_reader):
             move_objs.append(Move(
                 name=move_data["name"], power=move_data["power"],
                 accuracy=move_data["accuracy"] if move_data["accuracy"] > 0 else 100,
-                element=move_data["element"], move_id=mid
+                element=move_data["element"], move_id=mid,
+                category="physical" if move_data["element"] in _PHYSICAL_TYPES else "special",
             ))
 
     if not move_objs:
@@ -151,7 +153,8 @@ def make_creature_from_rom(species_id, level, rom_reader):
                     name=move_data["name"],
                     power=max(move_data["power"], 30),
                     accuracy=move_data["accuracy"] if move_data["accuracy"] > 0 else 100,
-                    element=move_data["element"], move_id=mid
+                    element=move_data["element"], move_id=mid,
+                    category="physical" if move_data["element"] in _PHYSICAL_TYPES else "special",
                 ))
                 break
     if not move_objs:
@@ -197,6 +200,7 @@ class BattleEngine:
         self.result = None
         self.is_final = is_final
         self.rom_data = rom_data
+        self.anim_events = []
 
     def _calc_crit_stage(self, attacker, move):
         """Calculate critical hit stage from move flags."""
@@ -229,18 +233,22 @@ class BattleEngine:
         return random.randint(1, 100) <= calc
 
     def calc_damage(self, attacker, defender, move, is_crit=False):
-        """Gen 3 damage formula with type effectiveness, STAB, crits."""
+        """Replicates the GBA FireRed damage formula exactly (integer math).
+
+        Mirrors pokefirered src/pokemon.c CalculateBaseDamage + Cmd_damagecalc +
+        Cmd_typecalc + ApplyRandomDmgMultiplier, in the same order with the same
+        integer truncation at every step.
+        """
         if move.power == 0:
             return 0, "", False
 
-        # Determine if physical or special
         is_physical = move.category == "physical"
 
-        # Get effective stats with stages
+        # --- CalculateBaseDamage -----------------------------------------
         if is_physical:
             atk_stat = attacker.get_effective_stat("atk")
             def_stat = defender.get_effective_stat("def")
-            # On crit, ignore negative stages for attacker, ignore positive for defender
+            # Crit ignores attacker's -stages and defender's +stages
             if is_crit:
                 if attacker.stat_stages["atk"] < 6:
                     atk_stat = attacker.atk
@@ -255,34 +263,50 @@ class BattleEngine:
                 if defender.stat_stages["spdef"] > 6:
                     def_stat = defender.spdef
 
-        # Base damage (Gen 3 formula)
+        # damage = atk * power ; damage *= (2*level/5 + 2)   (integer div)
         level = attacker.level
-        damage = ((2 * level / 5 + 2) * move.power * atk_stat / max(1, def_stat)) / 50 + 2
+        damage = atk_stat * move.power
+        damage *= (2 * level // 5 + 2)
+        damage //= max(1, def_stat)
+        damage //= 50
 
-        # STAB: 1.5x if move type matches attacker type
-        stab = 1.5 if (move.element == attacker.element or move.element == attacker.element2) else 1.0
+        # Burn halves physical damage (ROM applies it inside base damage, pre-STAB)
+        burn = bool(is_physical and hasattr(attacker, 'status') and attacker.status == "burn")
+        if burn:
+            damage //= 2
 
-        # Type effectiveness (from ROM)
-        type_mult, type_msg = get_type_multiplier(move.element, defender.element, defender.element2, self.rom_data)
+        base = damage + 2
 
-        # Critical hit multiplier
-        crit_mult = 1.5 if is_crit else 1.0
+        # --- Cmd_damagecalc: crit multiplier (2x in Gen 3) ----------------
+        if is_crit:
+            base *= 2
 
-        # Random factor 85-100%
-        rand_factor = random.randint(85, 100) / 100.0
+        # --- Cmd_typecalc: STAB then type (integer x/10 each) -------------
+        if move.element in (attacker.element, attacker.element2):
+            base = base * 15 // 10
+        type_mult, type_msg = _get_type_multiplier_int(
+            move.element, defender.element, defender.element2, self.rom_data)
+        if type_mult != 0:
+            base = base * type_mult // 10
+            if base == 0:
+                base = 1
+        else:
+            # Immune: ModulateDmgByType(0) leaves damage at 0 (no min-1 bump)
+            base = 0
 
-        # Burn halves physical damage
-        burn_mult = 0.5 if (is_physical and hasattr(attacker, 'status') and attacker.status == "burn") else 1.0
+        # --- ApplyRandomDmgMultiplier: 85-100% ---------------------------
+        if base != 0:
+            rand_percent = 100 - (random.randint(0, 15))
+            base = base * rand_percent // 100
+            if base == 0:
+                base = 1
 
-        # Final damage
-        total = damage * stab * type_mult * crit_mult * rand_factor * burn_mult
-        total = max(1, int(total))
-
-        return total, type_msg, is_crit
+        return base, type_msg, is_crit
 
     def player_attack(self, move_index):
         if self.finished:
             return []
+        self.anim_events = []
         self.turn += 1
         messages = []
         move_idx = min(move_index, len(self.player.moves) - 1)
@@ -317,6 +341,7 @@ class BattleEngine:
     def try_flee(self):
         if self.finished:
             return []
+        self.anim_events = []
         if self.is_final:
             return ["Can't flee from the final battle!"]
         chance = (self.player.spd * 128 // max(1, self.enemy.spd) + 30) % 256
@@ -337,6 +362,7 @@ class BattleEngine:
     def try_capture(self, ball_bonus=1.0):
         if self.finished:
             return []
+        self.anim_events = []
         if self.is_final:
             return ["Can't capture your rival's creature!"]
         # Gen 3 catch formula simplified
@@ -358,9 +384,17 @@ class BattleEngine:
 
     def _do_attack(self, attacker, defender, move):
         msgs = []
+        side_atk = "player" if attacker is self.player else "enemy"
+        side_def = "player" if defender is self.player else "enemy"
         # Accuracy check
         if not self._calc_accuracy(attacker, defender, move):
             msgs.append(f"{attacker.name} used {move.name}... but missed!")
+            self.anim_events.append({
+                "atk": side_atk, "def": side_def,
+                "move": move.name, "move_type": move.element,
+                "category": move.category, "power": move.power,
+                "dmg": 0, "crit": False, "hit": False, "miss": True,
+            })
             return msgs
 
         # Critical hit roll
@@ -369,6 +403,13 @@ class BattleEngine:
         # Calculate damage with full Gen 3 formula
         dmg, type_msg, _ = self.calc_damage(attacker, defender, move, is_crit)
         defender.take_damage(dmg)
+
+        self.anim_events.append({
+            "atk": side_atk, "def": side_def,
+            "move": move.name, "move_type": move.element,
+            "category": move.category, "power": move.power,
+            "dmg": dmg, "crit": is_crit, "hit": True, "miss": False,
+        })
 
         # Build message
         msg = f"{attacker.name} used {move.name}!"
@@ -1167,6 +1208,7 @@ class GameSession:
         """Execute battle action."""
         if self.state not in ("BATTLE", "FINAL_BATTLE") or self.battle is None:
             return []
+        self.battle.anim_events = []
 
         if action == "attack":
             msgs = self.battle.player_attack(param)

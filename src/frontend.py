@@ -6,6 +6,8 @@ Smooth pixel walking, real tile sprites, correct character sprites.
 import os
 import sys
 import argparse
+import math
+import random
 import pygame
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -760,7 +762,209 @@ def draw_rumor_hud(surface, font, rumors):
         surface.blit(line, (box_x + 5, box_y + 20 + i * 18))
 
 
-def draw_battle(surface, session, assets, font, b_cur, m_cur):
+# ---------- Battle Move Animations ------------------------------------------
+
+# Per-type effect colors for programmatic move animations.
+_MOVE_ANIM_COLORS = {
+    "normal": (200, 200, 210),
+    "fire": (255, 130, 20),
+    "water": (70, 150, 255),
+    "electric": (255, 230, 60),
+    "grass": (90, 210, 110),
+    "ice": (170, 230, 255),
+    "fighting": (210, 90, 60),
+    "poison": (180, 70, 220),
+    "ground": (185, 150, 90),
+    "flying": (160, 210, 240),
+    "psychic": (255, 90, 210),
+    "bug": (160, 200, 70),
+    "rock": (180, 150, 110),
+    "ghost": (130, 90, 230),
+    "dragon": (130, 110, 230),
+    "dark": (90, 80, 110),
+    "steel": (170, 180, 195),
+}
+_DEFAULT_ANIM_COLOR = (220, 220, 220)
+
+
+class BattleAnimator:
+    """Programmable move animation player.
+
+    Consumes a list of attack events from BattleEngine.anim_events (each with
+    atk/def side, move name/type, category, dmg, crit, hit/miss) and plays a
+    procedural effect: attacker lunge, projectile/beam, impact flash, target
+    shake and a particle burst tinted by the move type.
+    """
+
+    SPRITE_SIZE = 96
+
+    # Sprite top-left anchors (synced with draw_battle).
+    PLAYER_POS = (50, SCREEN_H - 300)
+    ENEMY_POS = (SCREEN_W - 150, 30)
+
+    def __init__(self):
+        self.queue = []
+        self.active = None
+        self.time = 0
+        self.impact = 0
+        self.particles = []
+        self.projectile = None
+        self.offset = {"player": (0, 0), "enemy": (0, 0)}
+        self.flash = {"player": 0, "enemy": 0}
+        self.done_time = 0
+
+    # ---- public API -------------------------------------------------------
+
+    def add_events(self, events):
+        if not events:
+            return
+        self.queue.extend(list(events))
+        if self.active is None:
+            self._start_next()
+
+    def is_active(self):
+        return self.active is not None
+
+    def update(self):
+        if self.active is None:
+            return
+        self.time += 1
+        ev = self.active
+        impact = self.impact
+        atk_side = ev["atk"]
+        def_side = ev["def"]
+
+        # Reset per-frame sprite offsets (they get re-derived below).
+        self.offset = {"player": (0, 0), "enemy": (0, 0)}
+
+        if ev.get("miss"):
+            if self.time >= self.done_time:
+                self._start_next()
+            return
+
+        # --- before impact: lunge / projectile flight ----------------------
+        if self.time < impact:
+            if ev["category"] == "physical":
+                f = abs(math.sin(self.time / max(1, impact) * math.pi))
+                dx = -16 * f if atk_side == "player" else 16 * f
+                self.offset[atk_side] = (dx, 0)
+            else:
+                sx, sy = self._center(atk_side)
+                tx, ty = self._center(def_side)
+                self.projectile = (sx, sy, tx, ty, self.time / impact)
+        elif self.time == impact:
+            # Impact!
+            self._spawn_burst(def_side, ev)
+            self.flash[def_side] = 10
+            self.projectile = None
+
+        # --- after impact: target shake ------------------------------------
+        if self.time >= impact and self.time < impact + 12:
+            sh = (random.randint(-3, 3), random.randint(-3, 3))
+            self.offset[def_side] = sh
+
+        # Move particles
+        alive = []
+        for p in self.particles:
+            p["life"] -= 1
+            if p["life"] <= 0:
+                continue
+            p["x"] += p["vx"]
+            p["y"] += p["vy"]
+            p["vy"] += p.get("g", 0)
+            p["vx"] *= 0.94
+            p["vy"] *= 0.94
+            alive.append(p)
+        self.particles = alive
+
+        if self.time >= self.done_time:
+            self._start_next()
+
+    def draw(self, surface):
+        if self.active is None:
+            return
+        # Fade flashes
+        for side in ("player", "enemy"):
+            if self.flash[side] > 0:
+                x, y = self._pos(side)
+                ov = pygame.Surface((self.SPRITE_SIZE, self.SPRITE_SIZE), pygame.SRCALPHA)
+                ov.fill((255, 255, 255, min(255, self.flash[side] * 22)))
+                surface.blit(ov, (x, y))
+                self.flash[side] -= 1
+
+        ev = self.active
+        color = _MOVE_ANIM_COLORS.get(ev.get("move_type", ""), _DEFAULT_ANIM_COLOR)
+
+        # Projectile
+        if self.projectile is not None:
+            sx, sy, tx, ty, t = self.projectile
+            x = sx + (tx - sx) * t
+            y = sy + (ty - sy) * t
+            pygame.draw.circle(surface, color, (int(x), int(y)), 10)
+            pygame.draw.circle(surface, (255, 255, 255), (int(x) - 2, int(y) - 2), 4)
+
+        # Particles
+        if self.particles:
+            ov = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+            for p in self.particles:
+                a = max(0, min(255, p["life"] * 12))
+                c = p["color"]
+                rect = pygame.Rect(int(p["x"]), int(p["y"]), p["size"], p["size"])
+                pygame.draw.rect(ov, (c[0], c[1], c[2], a), rect)
+            surface.blit(ov, (0, 0))
+
+    # ---- internals --------------------------------------------------------
+
+    def _start_next(self):
+        if not self.queue:
+            self.active = None
+            self.time = 0
+            self.particles = []
+            self.projectile = None
+            self.flash = {"player": 0, "enemy": 0}
+            return
+        self.active = self.queue.pop(0)
+        self.time = 0
+        self.particles = []
+        self.projectile = None
+        self.flash = {"player": 0, "enemy": 0}
+        ev = self.active
+        if ev.get("miss"):
+            self.impact = 10
+            self.done_time = 16
+        elif ev["category"] == "physical":
+            self.impact = 16
+            self.done_time = 44
+        else:
+            self.impact = 22
+            self.done_time = 46
+
+    def _pos(self, side):
+        return self.PLAYER_POS if side == "player" else self.ENEMY_POS
+
+    def _center(self, side):
+        x, y = self._pos(side)
+        return (x + self.SPRITE_SIZE // 2, y + self.SPRITE_SIZE // 2)
+
+    def _spawn_burst(self, def_side, ev):
+        cx, cy = self._center(def_side)
+        color = _MOVE_ANIM_COLORS.get(ev.get("move_type", ""), _DEFAULT_ANIM_COLOR)
+        n = 18 if ev.get("crit") else 11
+        for _ in range(n):
+            ang = random.uniform(0, math.tau)
+            spd = random.uniform(1.5, 4.5)
+            self.particles.append({
+                "x": cx, "y": cy,
+                "vx": math.cos(ang) * spd,
+                "vy": math.sin(ang) * spd - 1.0,
+                "life": random.randint(14, 24),
+                "size": random.randint(3, 6),
+                "color": color,
+                "g": 0.15,
+            })
+
+
+def draw_battle(surface, session, assets, font, b_cur, m_cur, anim=None):
     surface.fill(C_DARK)
     battle = session.battle
     if not battle:
@@ -771,7 +975,11 @@ def draw_battle(surface, session, assets, font, b_cur, m_cur):
         surface.blit(t, (SCREEN_W//2 - t.get_width()//2, 5))
     # Enemy
     es = assets.get_creature(battle.enemy.species_id, (96, 96))
-    surface.blit(es, (SCREEN_W - 150, 30))
+    ex, ey = BattleAnimator.ENEMY_POS
+    if anim:
+        aox, aoy = anim.offset.get("enemy", (0, 0))
+        ex, ey = ex + aox, ey + aoy
+    surface.blit(es, (ex, ey))
     surface.blit(font.render(f"{battle.enemy.name} Lv{battle.enemy.level}", True, C_WHITE), (SCREEN_W - 300, 35))
     pygame.draw.rect(surface, C_RED, (SCREEN_W - 300, 55, 130, 8))
     er = max(0, battle.enemy.hp / battle.enemy.max_hp)
@@ -779,7 +987,11 @@ def draw_battle(surface, session, assets, font, b_cur, m_cur):
     surface.blit(font.render(f"{battle.enemy.hp}/{battle.enemy.max_hp}", True, C_GREY), (SCREEN_W - 300, 66))
     # Player
     ps = assets.get_creature(battle.player.species_id, (96, 96))
-    surface.blit(ps, (50, SCREEN_H - 300))
+    px, py = BattleAnimator.PLAYER_POS
+    if anim:
+        aox, aoy = anim.offset.get("player", (0, 0))
+        px, py = px + aox, py + aoy
+    surface.blit(ps, (px, py))
     surface.blit(font.render(f"{battle.player.name} Lv{battle.player.level}", True, C_WHITE), (40, SCREEN_H - 320))
     pygame.draw.rect(surface, C_RED, (40, SCREEN_H - 200, 130, 8))
     pr = max(0, battle.player.hp / battle.player.max_hp)
@@ -801,6 +1013,8 @@ def draw_battle(surface, session, assets, font, b_cur, m_cur):
             surface.blit(font.render(f"{j+1}.{mv.name} P:{mv.power}", True, c), (20+j*148, my+32))
     for idx, msg in enumerate(battle.log[-3:]):
         surface.blit(font.render(msg, True, C_GREY), (20, my + 60 + idx * 17))
+    if anim is not None:
+        anim.draw(surface)
     # Sandstorm battle weather effect
     if session.current_map_key in ("rock_desert", "rock_desert_arena", "rock_desert_shelter"):
         try:
@@ -1061,6 +1275,7 @@ def main():
     pending_final = False
     surf_transition = None  # {"type": "mount"/"dismount", "dir": ..., "ticks": ...}
     rock_break_anim = None  # {"x":, "y":, "frame": 0-3, "ticks": 0}
+    battle_anim = BattleAnimator()
 
     # Input buffer for held-key movement
     move_request = (0, 0)
@@ -1279,6 +1494,8 @@ def main():
                         else:
                             act = ["attack", "capture", "potion", "flee"][battle_cursor]
                         msgs = session.battle_action(act, move_cursor if act == "attack" else 0)
+                        if session.battle:
+                            battle_anim.add_events(session.battle.anim_events)
                         if msgs:
                             dialogue_text = " | ".join(msgs[-2:]); dialogue_timer = 110
                     elif event.key in (pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4):
@@ -1286,6 +1503,8 @@ def main():
                         move_cursor = mi
                         if battle_cursor == 0:
                             msgs = session.battle_action("attack", mi)
+                            if session.battle:
+                                battle_anim.add_events(session.battle.anim_events)
                             if msgs:
                                 dialogue_text = " | ".join(msgs[-2:]); dialogue_timer = 110
 
@@ -1316,10 +1535,12 @@ def main():
             if step_done and pending_encounter:
                 w = pending_encounter
                 extractor.extract_creature_sprite(w.species_id)
+                battle_anim = BattleAnimator()
                 dialogue_text = f"Wild {w.name} Lv{w.level} appeared!"
                 dialogue_timer = 90; battle_cursor = 0; move_cursor = 0
                 pending_encounter = None
             elif step_done and pending_final:
+                battle_anim = BattleAnimator()
                 dialogue_text = "RIVAL BATTLE! Get ready!"
                 dialogue_timer = 120; battle_cursor = 0; move_cursor = 0
                 pending_final = False
@@ -1442,7 +1663,8 @@ def main():
             draw_team_hud(screen, session, assets, font)
             draw_hm_teach_menu(screen, session, font, pending_hm, hm_cursor)
         elif session.state in ("BATTLE", "FINAL_BATTLE"):
-            draw_battle(screen, session, assets, font, battle_cursor, move_cursor)
+            battle_anim.update()
+            draw_battle(screen, session, assets, font, battle_cursor, move_cursor, battle_anim)
         elif session.state == "VICTORY":
             screen.fill(C_BG)
             surface = screen

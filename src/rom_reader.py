@@ -72,32 +72,41 @@ def _load_type_effectiveness_from_rom(rom_data):
 _TYPE_EFFECTIVENESS = None
 
 
-def get_type_multiplier(move_type_name, def_type1_name, def_type2_name=None, rom_data=None):
-    """Look up the combined type effectiveness multiplier for a move against a defender.
-    Returns (multiplier_float, message) where message is 'super', 'weak', 'immune', or ''."""
+def _get_type_multiplier_int(move_type_name, def_type1_name, def_type2_name=None, rom_data=None):
+    """Combined type effectiveness as the ROM's integer multiplier (0, 5, 10 or 20)
+    with divisor 10 per type (ModulateDmgByType uses damage * mult / 10)."""
     global _TYPE_EFFECTIVENESS
     if _TYPE_EFFECTIVENESS is None:
         if rom_data is not None:
             _TYPE_EFFECTIVENESS = _load_type_effectiveness_from_rom(rom_data)
         else:
-            # Fallback: all neutral
-            return 1.0, ""
+            return (TYPE_MUL_NORMAL * TYPE_MUL_NORMAL) // 10, ""
 
     atk_idx = TYPE_NAMES.index(move_type_name) if move_type_name in TYPE_NAMES else 0
     def1_idx = TYPE_NAMES.index(def_type1_name) if def_type1_name in TYPE_NAMES else 0
     def2_idx = TYPE_NAMES.index(def_type2_name) if def_type2_name in TYPE_NAMES else def1_idx
 
     m1 = _TYPE_EFFECTIVENESS.get((atk_idx, def1_idx), TYPE_MUL_NORMAL)
-    m2 = _TYPE_EFFECTIVENESS.get((atk_idx, def2_idx), TYPE_MUL_NORMAL) if def2_idx != def1_idx else TYPE_MUL_NORMAL
+    if def2_idx != def1_idx:
+        m2 = _TYPE_EFFECTIVENESS.get((atk_idx, def2_idx), TYPE_MUL_NORMAL)
+    else:
+        m2 = TYPE_MUL_NORMAL
 
-    combined = m1 * m2
+    combined = (m1 * m2) // 10
     if combined == 0:
-        return 0.0, "immune"
-    elif combined < 100:
-        return combined / 100.0, "weak"
-    elif combined > 100:
-        return combined / 100.0, "super"
-    return 1.0, ""
+        return 0, "immune"
+    elif combined < 10:
+        return combined, "weak"
+    elif combined > 10:
+        return combined, "super"
+    return combined, ""
+
+
+def get_type_multiplier(move_type_name, def_type1_name, def_type2_name=None, rom_data=None):
+    """Look up the combined type effectiveness multiplier for a move against a defender.
+    Returns (multiplier_float, message) where message is 'super', 'weak', 'immune', or ''."""
+    int_mult, msg = _get_type_multiplier_int(move_type_name, def_type1_name, def_type2_name, rom_data)
+    return int_mult / 10.0, msg
 
 
 class RomReader:
