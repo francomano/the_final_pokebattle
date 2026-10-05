@@ -93,6 +93,23 @@ TILE_FILES = {
 
 # ---------- Asset Manager ---------------------------------------------------
 
+def _fit_centered(img, size):
+    """Scale `img` to fit inside `size` preserving aspect ratio, centered.
+
+    Used for portrait fallbacks so a 16x32 overworld sprite is not distorted.
+    """
+    w, h = img.get_size()
+    scale = min(size[0] / w, size[1] / h)
+    new_size = (max(1, int(w * scale)), max(1, int(h * scale)))
+    try:
+        scaled = pygame.transform.smoothscale(img, new_size)
+    except Exception:
+        scaled = pygame.transform.scale(img, new_size)
+    out = pygame.Surface(size, pygame.SRCALPHA)
+    out.blit(scaled, ((size[0] - new_size[0]) // 2, (size[1] - new_size[1]) // 2))
+    return out
+
+
 class Assets:
     def __init__(self, extractor):
         self.extractor = extractor
@@ -193,26 +210,18 @@ class Assets:
         }
         for char_id in list(ow_fallback.keys()):
             face_path = os.path.join(ASSET_DIR, f"trainer_{char_id}.png")
-            img = None
-            if os.path.exists(face_path):
-                try:
-                    from PIL import Image as PILImage
-                    pil = PILImage.open(face_path).convert("RGBA")
-                    pil = pil.resize((48, 48), PILImage.NEAREST)
-                    tmp = f"/tmp/trainer_face_{char_id}.png"
-                    pil.save(tmp)
-                    img = self._img(tmp, (48, 48))
-                except Exception:
-                    img = None
+            # Downscale straight with pygame: no Pillow round-trip and no
+            # scratch file in /tmp, which does not exist on every platform.
+            img = self._img(face_path, (48, 48))
             if img is None:
+                # No portrait in the ROM for this id: pad the 16x32 overworld
+                # sprite into the 48x48 slot instead of stretching it, so the
+                # fallback never looks squashed.
                 prefix = ow_fallback.get(char_id, "player_red")
                 self.load_player(prefix)
-                img = self.player_frame(prefix, "down", 0)
-                if img:
-                    try:
-                        img = pygame.transform.scale(img, (48, 48))
-                    except Exception:
-                        pass
+                frame = self.player_frame(prefix, "down", 0)
+                if frame:
+                    img = _fit_centered(frame, (48, 48))
             if img:
                 self.trainer_faces[char_id] = img
 

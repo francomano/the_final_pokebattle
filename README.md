@@ -95,11 +95,16 @@ Each level has its own rival (front-facing trainer), central arena and final sho
 
 - Python 3.10+
 - Pygame 2.x
+- Pillow (`Pillow`) and NumPy — both required to render the map backgrounds from the ROM
 - A legally obtained **Pokémon Fire Red** (U) GBA ROM — user provides their own, not included
 
 ```bash
-pip install pygame
+pip install pygame Pillow numpy
 ```
+
+> Without Pillow and NumPy the game still starts, but map backgrounds are
+> skipped at asset-generation time (`[map_renderer] Map BG generation skipped`)
+> and every map falls back to plain tile sprites instead of the ROM artwork.
 
 ---
 
